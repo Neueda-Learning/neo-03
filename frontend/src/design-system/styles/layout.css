@@ -1,0 +1,446 @@
+/* ============================================================================
+ * Layout — the shell, the bar, and the four ways a screen is arranged.
+ * ==========================================================================*/
+
+/* -- AppShell -------------------------------------------------------------
+ * The shell also paints the ground: a fixed, full-bleed image with two passes of
+ * film grain over it, behind everything and never scrolling. A theme that sets
+ * `--ds-ground-image: none` gets a flat canvas and no grain, so this costs a
+ * themeless build nothing.
+ *
+ * `isolation: isolate` keeps the two z-index:-1 pseudo-elements inside the shell's
+ * own stacking context — without it they would escape behind the page background
+ * and vanish. */
+.ds-shell {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--ds-color-canvas);
+}
+
+/* Ground + the first grain pass, blended into it. One element rather than two,
+ * because a pseudo-element can carry several background layers with their own
+ * blend modes. */
+.ds-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--ds-ground-grain, none), var(--ds-ground-image, none);
+  background-blend-mode: overlay, normal;
+  background-size: auto, cover;
+  background-position: center, center;
+  opacity: var(--ds-ground-grain-overlay-opacity, 1);
+}
+
+/* The second grain pass, soft-light over the first. The handoff runs grain twice
+ * on purpose: one pass alone reads as noise, two read as film. */
+.ds-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--ds-ground-grain, none);
+  mix-blend-mode: soft-light;
+  opacity: var(--ds-ground-grain-softlight-opacity, 0);
+}
+
+.ds-shell__main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--ds-page-width);
+  margin: 0 auto;
+  padding: var(--ds-page-pad-y) var(--ds-page-pad-x) var(--ds-space-10);
+}
+
+.ds-shell--wide .ds-shell__main {
+  max-width: none;
+}
+
+.ds-shell__footer {
+  padding: var(--ds-space-5) var(--ds-page-pad-x);
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+  text-align: center;
+}
+
+/* -- the sided shell: a menu column beside the content -------------------- */
+
+/* Only when `side` is passed, so the three screens that use `nav` are untouched. */
+.ds-shell--sided .ds-shell__body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--ds-side-width) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--ds-space-6);
+  width: 100%;
+  max-width: var(--ds-page-width);
+  margin: 0 auto;
+  padding: var(--ds-page-pad-y) var(--ds-page-pad-x) var(--ds-space-10);
+}
+
+.ds-shell--wide.ds-shell--sided .ds-shell__body {
+  max-width: none;
+}
+
+/* The column already carries the page padding, so main must not pay it twice. */
+.ds-shell--sided .ds-shell__main {
+  max-width: none;
+  padding: 0;
+}
+
+.ds-shell__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-4);
+  position: sticky;
+  /* Clears a TopNav if one is ever used above a sided shell; harmless when there is none. */
+  top: var(--ds-page-pad-y);
+}
+
+/* One breakpoint, and it stacks. A menu that becomes a 90px-wide column of wrapped words is
+   worse than a menu above the content. */
+@media (max-width: 720px) {
+  .ds-shell--sided .ds-shell__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ds-shell__side {
+    position: static;
+  }
+}
+
+/* -- SideBrand ------------------------------------------------------------ */
+.ds-sidebrand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-4) var(--ds-space-5);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-fill);
+  backdrop-filter: var(--ds-surface-backdrop);
+  border: var(--ds-border-width) solid var(--ds-surface-border);
+  box-shadow: var(--ds-surface-shadow);
+}
+
+/* The owner: small, uppercase, tracked — the quiet half of the lock-up, as in TopNav. */
+.ds-sidebrand__brand {
+  font-size: var(--ds-text-2xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+}
+
+/* The app's name. Sans, NOT the display serif, even though this is a heading-ish line.
+ *
+ * Identity lines carry numbers ("neo-04", "Team 07"), and Cormorant Garamond sets
+ * numerals as old-style figures — x-height, with a 1 shaped like a small-caps I — so "01" reads
+ * as "o1". In the one box on screen whose job is to say WHICH team and WHICH app, that is a
+ * failure of its only purpose. `font-variant-numeric: lining-nums` does not rescue it: the
+ * vendored latin subset does not carry the feature, verified by the glyph widths not changing.
+ *
+ * This is the same conclusion the theme already reached for large figures — see the note in
+ * theme/glass.css and .ds-metric__value — arrived at again for a different element. */
+.ds-sidebrand__product {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xl);
+  font-weight: var(--ds-weight-semibold);
+  line-height: 1.15;
+  color: var(--ds-color-text);
+}
+
+.ds-sidebrand__meta {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-text-muted);
+}
+
+/* -- SideNav -------------------------------------------------------------- */
+.ds-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-fill);
+  backdrop-filter: var(--ds-surface-backdrop);
+  border: var(--ds-border-width) solid var(--ds-surface-border);
+  box-shadow: var(--ds-surface-shadow);
+}
+
+.ds-side__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ds-side__item:hover:not(:disabled) {
+  background: var(--ds-color-surface-hover);
+  color: var(--ds-color-text);
+}
+
+.ds-side__item[aria-current='page'] {
+  background: var(--ds-color-accent-soft);
+  color: var(--ds-color-accent-text);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.ds-side__item:focus-visible {
+  outline: 2px solid var(--ds-color-focus);
+  outline-offset: 1px;
+}
+
+/* Not-yet-built screens. `disabled` is a real attribute, so this is only the look of it. */
+.ds-side__item:disabled {
+  color: var(--ds-color-text-muted);
+  cursor: default;
+}
+
+.ds-side__label {
+  font-size: var(--ds-text-md);
+}
+
+.ds-side__hint {
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-color-text-muted);
+}
+
+/* -- TopNav --------------------------------------------------------------- */
+.ds-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-6);
+  min-height: var(--ds-nav-height);
+  padding: 0 var(--ds-page-pad-x);
+  background: var(--ds-color-nav);
+  color: var(--ds-color-nav-ink);
+  position: sticky;
+  top: 0;
+  z-index: var(--ds-z-nav);
+}
+
+/* The brand lock-up: "NEO · VERIFICATION". Set as type, not as an image — the
+ * system ships no logo, so the wordmark is the mark. */
+.ds-nav__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-bold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ds-nav__brand-sub {
+  font-weight: var(--ds-weight-regular);
+  color: var(--ds-color-nav-ink-muted);
+}
+
+.ds-nav__tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ds-nav__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.ds-nav__tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-nav-ink-muted);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-medium);
+  white-space: nowrap;
+  transition: background var(--ds-transition), color var(--ds-transition);
+}
+
+.ds-nav__tab:hover {
+  background: var(--ds-color-nav-hover);
+  color: var(--ds-color-nav-ink);
+}
+
+.ds-nav__tab[aria-current='page'] {
+  background: var(--ds-color-accent);
+  color: var(--ds-color-accent-ink);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.ds-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  margin-left: auto;
+}
+
+/* -- PageHeader ----------------------------------------------------------- */
+.ds-page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--ds-space-5);
+}
+
+.ds-page-head__text {
+  flex: 1;
+  min-width: 260px;
+}
+
+.ds-page-head__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+}
+
+.ds-page-head__title {
+  font-family: var(--ds-font-display, inherit);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-display-weight);
+  letter-spacing: var(--ds-tracking-tight);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-color-text);
+}
+
+/* The line beside the title that states the screen's rules — "empty until you
+ * search · max 10 rows · names fetched live, never stored". Every board in the
+ * v5 briefs carries one. */
+.ds-page-head__lede {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-md);
+}
+
+.ds-page-head__meta {
+  margin-top: var(--ds-space-2);
+  color: var(--ds-color-text-secondary);
+  font-size: var(--ds-text-md);
+}
+
+.ds-page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+/* -- Toolbar -------------------------------------------------------------- */
+.ds-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--ds-space-5);
+}
+
+.ds-toolbar__spacer {
+  flex: 1;
+}
+
+.ds-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+/* -- Split — main column + sidebar ---------------------------------------
+ * Every case-detail screen in the briefs: the record on the left, the live
+ * applicant sidebar on the right. */
+.ds-split {
+  display: grid;
+  grid-template-columns: minmax(0, var(--ds-split-ratio, 1.6fr)) minmax(0, 1fr);
+  gap: var(--ds-space-5);
+  align-items: start;
+}
+
+.ds-split--even {
+  --ds-split-ratio: 1fr;
+}
+
+.ds-split--wide-main {
+  --ds-split-ratio: 2.2fr;
+}
+
+@media (max-width: 900px) {
+  .ds-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* -- Grid ----------------------------------------------------------------- */
+.ds-grid {
+  display: grid;
+  gap: var(--ds-space-4);
+  grid-template-columns: repeat(var(--ds-grid-cols, 3), minmax(0, 1fr));
+}
+
+.ds-grid--auto {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--ds-grid-min, 260px), 1fr)
+  );
+}
+
+@media (max-width: 900px) {
+  .ds-grid {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(var(--ds-grid-min, 220px), 1fr)
+    );
+  }
+}
+
+/* -- Stack ---------------------------------------------------------------- */
+.ds-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-stack-gap, var(--ds-space-4));
+}
+
+.ds-stack--row {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* -- Section -------------------------------------------------------------- */
+.ds-section {
+  margin-bottom: var(--ds-space-7);
+}
+
+.ds-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-3);
+}
+
+.ds-section__title {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+}

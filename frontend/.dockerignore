@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.git/
+
+# The received design handoff: source artwork and the original kit. It is
+# translated into src/design-system/theme/, not served — 4.9 MB that must never
+# reach the image.
+handoff

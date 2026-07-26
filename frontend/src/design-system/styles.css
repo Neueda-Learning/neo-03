@@ -1,0 +1,26 @@
+/* ============================================================================
+ * The design system's single entry point. Import this once, in main.jsx:
+ *
+ *     import './design-system/styles.css';
+ *
+ * Order matters and is the whole theming story:
+ *   1. fonts     — @font-face for the vendored faces. Nothing is fetched.
+ *   2. tokens    — scales (spacing, type, radii, motion). No colours.
+ *   3. theme     — every colour, face and backdrop in the product. See DESIGN.md.
+ *   4. base      — reset + element defaults + the four global helpers.
+ *   5. styles/*  — the .ds-* layer the components render against.
+ *
+ * To reskin: load your own theme file AFTER this one. Do not edit anything in
+ * here, and never add a colour to a component.
+ * ==========================================================================*/
+
+@import './theme/fonts.css';
+@import './tokens/tokens.css';
+@import './theme/glass.css';
+@import './styles/base.css';
+@import './styles/layout.css';
+@import './styles/core.css';
+@import './styles/data.css';
+@import './styles/forms.css';
+@import './styles/feedback.css';
+@import './styles/overlay.css';

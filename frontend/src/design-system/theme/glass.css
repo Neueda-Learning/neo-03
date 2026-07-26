@@ -1,0 +1,204 @@
+/* ============================================================================
+ * glass — the Havn Glass Console theme. The product's one theme.
+ *
+ * THIS IS THE ONLY FILE IN THE DESIGN SYSTEM THAT NAMES A COLOUR, A FONT, OR A
+ * BACKDROP. Every component styles itself against the `--ds-*` custom properties
+ * below and never against a literal, so reskinning means writing a file like this
+ * one — no component is edited, ever.
+ *
+ * Source: `handoff/glass/glass.css` (received 2026-07-26). Its own header points at
+ * a `design.md` that did not come with it, so the rules — as opposed to the raw
+ * tokens — are inferred. Every inference is listed and numbered in DESIGN.md
+ * § "Inferences from the glass handoff"; when the real design.md arrives, that
+ * section is the diff to work through.
+ *
+ * The handoff's raw values are carried over verbatim. What is added here is the
+ * mapping onto the design system's contract: which glass token plays which
+ * semantic role.
+ * ==========================================================================*/
+
+:root,
+[data-ds-theme='glass'] {
+  /* -- The handoff's own tokens, verbatim -------------------------------- */
+  --havn-ink: #173a2b;
+  --havn-muted: #33473d;
+  --havn-mint: #5fe0ac;
+  --havn-mint-strong: #2fe39c;
+  --havn-mint-deep: #2fa47f;
+  --havn-volt: #ddf54a;
+  --havn-ground-fallback: #aff0d6;
+  --havn-hairline: rgba(255, 255, 255, 0.55);
+  --havn-review: #bbd6f4;
+  --havn-review-ink: #1f3a5c;
+  --havn-declined: #a8493a;
+
+  /* -- Typography ---------------------------------------------------------
+   * Poppins carries the interface; Cormorant Garamond carries titles. Both are
+   * vendored in theme/fonts.css — nothing is fetched at runtime.
+   *
+   * The handoff is explicit that large figures are ALWAYS sans, never the serif,
+   * at weight 300 — hence --ds-figure-family / --ds-figure-weight. */
+  --ds-font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  --ds-font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --ds-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+  --ds-figure-family: var(--ds-font-sans);
+  --ds-figure-weight: 300;
+  --ds-display-weight: 600;
+
+  /* -- The ground --------------------------------------------------------
+   * A full-bleed image behind everything, with two passes of film grain over it.
+   * The grain lives here rather than in the stylesheet because it is a look: a
+   * future theme will want a different one, or none. `--ds-ground-image: none`
+   * turns the whole layer off. */
+  --ds-ground-image: url('../assets/ground.jpg');
+  --ds-ground-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23g)'/></svg>");
+  --ds-ground-grain-overlay-opacity: 0.65;
+  --ds-ground-grain-softlight-opacity: 0.7;
+
+  /* -- Surfaces ----------------------------------------------------------
+   * The canvas is the ground colour showing through; panels are frosted glass.
+   *
+   * `--ds-surface-*` are the three hooks a theme needs to change what a panel IS
+   * rather than merely what colour it is: its fill, its blur, its border and its
+   * shadow. Without them glass would have required editing every component, which
+   * is precisely the failure the system exists to prevent. */
+  --ds-color-canvas: transparent;
+  --ds-color-surface: transparent;
+  --ds-color-surface-sunken: rgba(255, 255, 255, 0.42);
+  --ds-color-surface-hover: rgba(95, 224, 172, 0.45);
+  --ds-color-surface-active: rgba(95, 224, 172, 0.6);
+
+  --ds-surface-fill: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.36),
+    rgba(255, 255, 255, 0.18)
+  );
+  --ds-surface-backdrop: blur(30px) saturate(1.9) brightness(1.06);
+  --ds-surface-border: 1px solid rgba(255, 255, 255, 0.5);
+  --ds-surface-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 1px 0 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.2), 0 22px 48px rgba(40, 60, 85, 0.22),
+    0 2px 6px rgba(40, 60, 85, 0.1);
+
+  /* Controls are deliberately NOT glass — see inference 6. A JSON envelope in a
+   * textarea, or a search field, over a blurred pattern is unreadable, and nesting
+   * backdrop-filter inside backdrop-filter is where browsers disagree. */
+  --ds-control-fill: rgba(255, 255, 255, 0.82);
+  --ds-control-fill-hover: rgba(255, 255, 255, 0.92);
+
+  /* The bar rides on the ground rather than floating over it: a sticky element
+   * with its own backdrop-filter above a fixed backdrop is the one combination
+   * browsers render inconsistently. Opaque ink, no blur. */
+  /* The nav colour is translucent, so anything that needs the SAME ink but solid —
+   * a credit-card face you must not see the wallpaper through — takes this. */
+  --ds-color-ink-solid: var(--havn-ink);
+  --ds-color-nav: rgba(23, 58, 43, 0.94);
+  --ds-color-nav-ink: #ffffff;
+  --ds-color-nav-ink-muted: rgba(255, 255, 255, 0.66);
+  --ds-color-nav-hover: rgba(95, 224, 172, 0.28);
+
+  /* -- Lines -------------------------------------------------------------- */
+  --ds-color-border: rgba(255, 255, 255, 0.5);
+  --ds-color-border-subtle: var(--havn-hairline);
+  --ds-color-border-strong: rgba(47, 164, 127, 0.55);
+
+  /* -- Ink ---------------------------------------------------------------- */
+  --ds-color-text: var(--havn-ink);
+  --ds-color-text-secondary: var(--havn-muted);
+  --ds-color-text-muted: rgba(51, 71, 61, 0.72);
+  --ds-color-text-inverse: #ffffff;
+
+  /* -- Accent ------------------------------------------------------------- */
+  --ds-color-accent: var(--havn-mint);
+  --ds-color-accent-hover: var(--havn-mint-strong);
+  --ds-color-accent-press: var(--havn-mint-deep);
+  --ds-color-accent-soft: rgba(95, 224, 172, 0.42);
+  --ds-color-accent-ink: var(--havn-ink);
+  --ds-color-accent-text: #1c6b51;
+
+  --ds-color-focus: var(--havn-mint-deep);
+
+  /* -- Tones -------------------------------------------------------------
+   * Each tone carries FOUR roles, and the split between the last two matters:
+   *   surface/border/text  the chip — ink chosen against that fill
+   *   accent               the MARK: a bar, a dot, a card edge. Judged against
+   *                        what sits beside it, not against text rules.
+   *   ink                  the tone used AS TEXT, e.g. a headline figure. Held
+   *                        to 4.5:1 on the glass surface.
+   * Volt at 1.93:1 and mint-deep at 2.91:1 both fail as text while being exactly
+   * right as marks, which is why one variable could not serve both.
+   *
+   * Mapped onto the handoff's four chips. `review` is blue in the handoff and
+   * REVIEW/REFERRED is what `warning` renders, so warning takes the blue; volt —
+   * the handoff's "look at this now" colour — becomes `info`, which is what an
+   * in-flight step is. Inference 1 in DESIGN.md. */
+  --ds-tone-positive-surface: var(--havn-mint);
+  --ds-tone-positive-border: var(--havn-mint-deep);
+  --ds-tone-positive-text: var(--havn-ink);
+  --ds-tone-positive-ink: #1a6b50;
+  --ds-tone-positive-accent: var(--havn-mint-deep);
+
+  --ds-tone-warning-surface: var(--havn-review);
+  --ds-tone-warning-border: #93bce8;
+  --ds-tone-warning-text: var(--havn-review-ink);
+  --ds-tone-warning-ink: #2c5a8a;
+  --ds-tone-warning-accent: #3f7cbe;
+
+  --ds-tone-negative-surface: var(--havn-declined);
+  --ds-tone-negative-border: #8c3629;
+  --ds-tone-negative-text: #ffffff;
+  --ds-tone-negative-ink: #8c3629;
+  --ds-tone-negative-accent: var(--havn-declined);
+
+  --ds-tone-info-surface: var(--havn-volt);
+  --ds-tone-info-border: #c2da2c;
+  --ds-tone-info-text: var(--havn-ink);
+  --ds-tone-info-ink: #5f6f0c;
+  --ds-tone-info-accent: #a8bf1f;
+
+  /* Neutral has no glass equivalent — inference 5. Translucent white with muted
+   * ink is the only reading consistent with the rest of the kit. */
+  --ds-tone-neutral-surface: rgba(255, 255, 255, 0.6);
+  --ds-tone-neutral-border: var(--havn-hairline);
+  --ds-tone-neutral-text: var(--havn-muted);
+  --ds-tone-neutral-ink: #33473d;
+  --ds-tone-neutral-accent: rgba(51, 71, 61, 0.45);
+
+  /* -- Data series -------------------------------------------------------- */
+  --ds-series-1: var(--havn-mint-deep);
+  --ds-series-2: #3f7cbe;
+  --ds-series-3: #a8bf1f;
+  --ds-series-4: var(--havn-declined);
+  --ds-series-5: rgba(51, 71, 61, 0.5);
+  --ds-series-track: rgba(255, 255, 255, 0.45);
+
+  /* -- Elevation ---------------------------------------------------------- */
+  --ds-shadow-sm: 0 2px 8px rgba(40, 60, 85, 0.12);
+  --ds-shadow-md: 0 6px 18px rgba(40, 60, 85, 0.18);
+  --ds-shadow-overlay: 0 22px 48px rgba(40, 60, 85, 0.32);
+  --ds-scrim: rgba(23, 58, 43, 0.34);
+
+  /* -- Structural overrides ----------------------------------------------
+   * A theme may move the metrics too. Glass is rounder than the default. */
+  --ds-radius-sm: 6px;
+  --ds-radius-md: 7px;
+  --ds-radius-lg: 16px;
+  --ds-radius-xl: 16px;
+
+  /* -- Team accents -------------------------------------------------------
+   * The ten desk colours from the handoff's GlassPanel, carried over as variables
+   * so they are themeable and ready for modules 02–10. Nothing in b00 or b01 uses
+   * them: neither app is a desk board. Inference 7. */
+  --ds-team-cards: #a6c918;
+  --ds-team-lending: #e8a020;
+  --ds-team-deposits: #17a67e;
+  --ds-team-fraud: #d6337e;
+  --ds-team-kyc: #2e86c9;
+  --ds-team-disputes: #d9482b;
+  --ds-team-payments: #12a3b4;
+  --ds-team-treasury: #4353c4;
+  --ds-team-collections: #4e9e3a;
+  --ds-team-support: #8a4fd0;
+}

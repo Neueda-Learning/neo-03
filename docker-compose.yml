@@ -1,0 +1,104 @@
+# Standalone stack for THIS service: MySQL + backend + frontend + the sidecar.
+# Useful for working on the service without booting all 23 containers of the system.
+#
+#   docker compose up --build
+#   → http://localhost:9000   the SIDECAR — send applications, watch what comes back
+#   → http://localhost:5173   React UI    http://localhost:8080/  status page
+#
+# In the full system, neo-00/docker-compose.yml supplies the shared MySQL and the REAL
+# orchestrator instead, and this file is not used.
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-neo_03}
+      MYSQL_USER: ${DB_USERNAME:-appuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-apppass}
+    ports:
+      # Host 3307 so it never clashes with a locally installed MySQL. Services inside
+      # compose reach the DB as mysql:3306 regardless.
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Creates the sidecar's schema and grants appuser. MySQL runs these ONLY on a fresh data
+      # directory — if you had this stack up before the sidecar existed, run
+      # `docker compose down -v` once or the sidecar cannot reach its schema.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    environment:
+      DB_URL: ${DB_URL:-jdbc:mysql://mysql:3306/neo_03}
+      DB_USERNAME: ${DB_USERNAME:-appuser}
+      DB_PASSWORD: ${DB_PASSWORD:-apppass}
+      SERVICE_ID: ${SERVICE_ID:-neo03}
+      SERVICE_NAME: ${SERVICE_NAME:-Identity Verification (KYC)}
+      SERVICE_DOMAIN: ${SERVICE_DOMAIN:-kyc}
+      MOCKED_DEPENDENCIES: ${MOCKED_DEPENDENCIES:-id-verification-provider}
+      # The sidecar plays the orchestrator here, so callbacks have somewhere real to land and
+      # you can see BOTH halves of the contract. Point this at http://orchestrator:8080 to talk
+      # to the real one instead — nothing else in the module changes.
+      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://sidecar:8080}
+      # Any localhost port by default — see WebConfig for why a fixed list breaks the UI.
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:*,http://127.0.0.1:*}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # The mock orchestrator: sends applications to your module and receives its callback.
+  #
+  # Built straight from its own public repo — there is NO sidecar source in this repo, nothing
+  # to drift, and nothing for you to maintain. The first build takes a few minutes; after that
+  # it is cached until the sidecar itself changes. Pick up a new version with:
+  #   docker compose up --build sidecar
+  #
+  # Do not replace this with a local path or a vendored copy. One repo, one copy — that is what
+  # stops ten teams ending up with ten different mock orchestrators.
+  sidecar:
+    build: https://github.com/gjavolce/neobank-sidecar.git#${SIDECAR_REF:-v1}
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/sidecar_db
+      DB_USERNAME: ${DB_USERNAME:-appuser}
+      DB_PASSWORD: ${DB_PASSWORD:-apppass}
+      # Where to send applications. Also overridable per send from the sidecar's own page, which
+      # is what you want when your backend runs in your IDE rather than in here.
+      MODULE_URL: ${MODULE_URL:-http://backend:8080}
+    ports:
+      # 9000 on purpose: the module's ORCHESTRATOR_URL already defaults to localhost:9000, so a
+      # backend you run from your IDE finds the sidecar with no configuration at all.
+      - "${SIDECAR_PORT:-9000}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:

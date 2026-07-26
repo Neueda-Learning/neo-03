@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.neobank</groupId>
+    <artifactId>neobank-module</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>neobank-module</name>
+    <description>neo-bank onboarding module — accepts an application, decides, calls the orchestrator back</description>
+
+    <properties>
+        <java.version>21</java.version>
+        
+        
+        <!--
+          Override Spring Boot 3.3.4's Testcontainers (1.19.8, from 2024). Its bundled
+          docker-java pins an old Docker API version that modern engines (Docker 28/29+,
+          min API 1.40) reject with HTTP 400 → "Could not find a valid Docker environment".
+          1.21.x negotiates the API version, so the *IT tests work on current Docker Desktop
+          and on CI runners.
+        -->
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <!--
+          Integration tests (*IT) need Docker. They are SKIPPED by default so a local
+          `mvn verify` is always green and fast even when Docker Desktop is stopped
+          (the classic student state — the Testcontainers Docker probe otherwise hangs
+          for minutes and then fails). CI sets CI=true, which activates the
+          `integration` profile below and runs them for real. To run them locally,
+          start Docker and use `mvn verify -DskipITs=false`.
+        -->
+        <skipITs>true</skipITs>
+    </properties>
+
+    <dependencies>
+        <!-- Web / REST -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Bean validation on request DTOs -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- Persistence: Spring Data JPA (schema owned by Liquibase, ddl-auto=validate) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <!-- Schema migrations -->
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-core</artifactId>
+        </dependency>
+        <!-- Actuator: liveness/readiness probes behind our own /health -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- OpenAPI / Swagger UI: the contract self-check reads this module's spec -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.6.0</version>
+        </dependency>
+
+        <!-- MySQL at runtime (dev + docker) -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Unit + web-slice tests run DB-free against in-memory H2 (no Docker for `mvn test`) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- JUnit 5, Mockito, AssertJ, MockMvc — everything the unit tests use -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Integration tests (*IT) run against a REAL MySQL 8 via Testcontainers on `mvn verify` -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!--
+              Surefire runs unit/web-slice tests (*Test) on `mvn test` — fast, no Docker.
+              Failsafe runs integration tests (*IT) on `mvn verify` — these need Docker
+              (Testcontainers boots a real MySQL). CI runs `verify`; a student's plain
+              `mvn test` stays Docker-free, and *IT skips gracefully when Docker is absent.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <skipITs>${skipITs}</skipITs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Auto-activated in CI (GitHub Actions sets CI=true): run the *IT tests
+             against a real MySQL via Testcontainers. Docker is present on the runner. -->
+        <profile>
+            <id>integration</id>
+            <activation>
+                <property>
+                    <name>env.CI</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <skipITs>false</skipITs>
+            </properties>
+        </profile>
+    </profiles>
+</project>

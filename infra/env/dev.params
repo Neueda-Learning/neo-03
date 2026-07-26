@@ -1,0 +1,24 @@
+# neo-03's OWN service (module 01: Identity Verification (KYC)), on dev. Per-repo values only —
+# the pipeline adds EnvironmentName, BackendImage, FrontendImage (pinned @sha256), DbEndpoint,
+# AlbDnsName.
+ServiceName=neo-03
+Role=module
+# Served under this prefix by the ALB; MUST equal the frontend image's build-time
+# APP_BASE_PATH (the pipeline bakes it from this line, so they cannot drift).
+PathPrefix=/neo-03
+# Reserved for slot 01. Every module has a unique priority — neo-03=10, neo-02=20, …
+# neo-10=100 — and the orchestrator's /* catch-all is 50000, checked last. Two services
+# claiming one priority fails the second deploy, so this number is not yours to pick.
+ListenerRulePriority=30
+DbName=neo_03
+# What this module puts on its status updates — deliberately not the repo name (neo-03 → neo03).
+ServiceId=neo03
+DisplayName=Identity Verification (KYC)
+# The BIAN domain this module owns, reported on /info.
+Domain=kyc
+# Whose module this is. Shown in the UI's identity box.
+Team=Team 03
+# Comma-separated external systems this module fakes — deliverable #4's "what has been
+# mocked" register, as live config rather than a paragraph that goes stale. Empty is a
+# claim, not an omission: it says this module talks to nothing outside itself.
+MockedDependencies=id-verification-provider

@@ -1,0 +1,6 @@
+# Liquibase master changelog — this service owns its schema and nothing else's.
+# Add one file per change set under changes/ and include it here in order.
+# Never edit an already-applied change set; add a new one.
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/001-create-demo-showcase.yaml

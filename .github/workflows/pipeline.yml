@@ -1,0 +1,225 @@
+name: Pipeline
+
+# ONE pipeline per repo. This repo deploys only its OWN service; the shared platform is
+# deployed separately from a laptop (infra/platform.yaml + roles.yaml).
+#
+# Trunk-based, so many branches during the hackathon never fight over the single dev stack:
+#   push to a FEATURE branch → build + test only (VERIFY). Nothing is published or deployed.
+#   push to MAIN (i.e. a branch merged back) → build + test → publish (pinned @sha256) →
+#                       deploy DEV → smoke → record the pinned digest in SSM (the promote source)
+#   Run workflow, promote=true → PROD deploy is REQUESTED, then PAUSES for a required
+#                                reviewer to approve; on approval it ships the exact digest
+#                                main put on dev. NO rebuild — it ships the bytes dev proved.
+#
+# So dev only ever moves when something lands on main; feature branches just prove they build.
+# Prod's gate (in order): (1) manual promote input, (2) main-only — the SSM pin is written only
+# on main, deploy-prod has a `github.ref == main` guard, and the prod environment's
+# deployment-branch policy allows only main, (3) a REQUIRED REVIEWER on the `prod` environment
+# (repos are public, so this GitHub-native approval is available) — deploy-prod pauses until a
+# human approves in the Actions UI.
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["**.md", "infra/services.sh", "infra/db-reset.sh"]
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: "Promote main's current dev build to prod (no rebuild)"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write     # OIDC — assume this repo's per-repo deploy role
+  contents: read
+  packages: write     # push images to ghcr.io
+
+# Per-ref: feature branches verify in parallel (they don't deploy), while pushes to the SAME ref
+# — notably main, the only ref that deploys — queue instead of colliding on the shared dev stack.
+# Never cancel a half-done deploy.
+concurrency:
+  group: neobank-${{ github.event.repository.name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---- VERIFY (every push, ANY branch) — this is all a feature branch does ------------
+  backend:
+    name: build · backend (unit + DB integration tests)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B verify   # CI=true → also the Testcontainers real-MySQL test
+
+  frontend:
+    name: build · UI
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+
+  # ---- PUBLISH (MAIN only): pinned @sha256 digests are this job's outputs ---------------
+  publish:
+    name: publish · images to ghcr.io
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.refs.outputs.backend }}
+      frontend: ${{ steps.refs.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The front end is served under a path prefix by the ALB, baked into the image at build
+      # time (Vite writes asset URLs then). Single-source it from the service params so the
+      # image and the PathPrefix parameter can never drift.
+      - id: prefix
+        run: echo "value=$(sed -n 's/^PathPrefix=//p' infra/env/dev.params)" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push backend
+        id: be
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-backend:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}-backend:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Plain manifest, not an attestation index: we pin prod to the digest, and
+          # provenance turns that digest into an index ECS cannot pull.
+          provenance: false
+
+      - name: Build + push frontend
+        id: fe
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-frontend:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}-frontend:sha-${{ github.sha }}
+          build-args: |
+            APP_BASE_PATH=${{ steps.prefix.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      # The immutable refs everything downstream deploys — dev now, prod on promote.
+      - id: refs
+        run: |
+          echo "backend=${{ env.REGISTRY }}/${{ github.repository }}-backend@${{ steps.be.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${{ env.REGISTRY }}/${{ github.repository }}-frontend@${{ steps.fe.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  # ---- DEPLOY DEV (MAIN only) ----------------------------------------------------------
+  deploy-dev:
+    name: deploy · dev
+    needs: [backend, frontend, publish]
+    # Runs on a push once the build passed and dev is enabled. A pinned @sha256 param IS a
+    # template change, so CloudFormation rolls the task definition itself — no force-deploy.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled() && !failure() && vars.DEV_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy this service to dev
+        env: { AWS_REGION: "${{ vars.AWS_REGION }}" }
+        run: bash infra/deploy-service.sh dev '${{ needs.publish.outputs.backend }}' '${{ needs.publish.outputs.frontend }}'
+
+  # ---- SMOKE (MAIN only): after the main deploy, prove dev answers through the ALB --------
+  smoke:
+    name: smoke · dev health
+    needs: deploy-dev
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled() && needs.deploy-dev.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: dev   # so vars.AWS_* resolve to the dev environment's role ARN
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: This service must answer through the ALB
+        run: |
+          set -euo pipefail
+          ALB=$(aws ssm get-parameter --name "/neobank/dev/alb-dns" --query Parameter.Value --output text)
+          PREFIX=$(sed -n 's/^PathPrefix=//p' infra/env/dev.params)
+          BASE="http://$ALB$PREFIX"
+          for i in $(seq 1 60); do curl -sf "$BASE/health" >/dev/null && break; sleep 5; done
+          curl -sf "$BASE/health"
+          curl -sf "$BASE/" | grep -qi '<div id="root">'
+          echo "dev is up at $BASE/"
+
+  # ---- PIN (main only): record the promote source ------------------------------------
+  pin-main:
+    name: pin · record main's digest for promote
+    needs: [publish, deploy-dev]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled() && needs.deploy-dev.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Record what dev is running (main) as the promote source
+        run: |
+          set -euo pipefail
+          R="${{ github.event.repository.name }}"
+          aws ssm put-parameter --overwrite --type String \
+            --name "/neobank/promote/$R/backend"  --value '${{ needs.publish.outputs.backend }}'
+          aws ssm put-parameter --overwrite --type String \
+            --name "/neobank/promote/$R/frontend" --value '${{ needs.publish.outputs.frontend }}'
+          echo "pinned $R promote source to main's digest"
+
+  # ---- PROMOTE → PROD (manual only): ship the pinned digest, NO rebuild ----------------
+  deploy-prod:
+    name: deploy · prod (promote)
+    # Promote ONLY from main. Layer 1: the promote source is an SSM pin written only by the
+    # pin-main job (main-only), so the image is always a main build regardless. Layer 2 (this
+    # ref check): the promote must also be DISPATCHED from main, so a feature branch's infra
+    # template/params can't be used for a prod deploy either. A `prod` environment
+    # deployment-branch policy (main only) is the GitHub-enforced backstop — see infra/README.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && github.ref == 'refs/heads/main' && vars.PROD_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Promote main's dev digest to prod
+        env: { AWS_REGION: "${{ vars.AWS_REGION }}" }
+        run: |
+          set -euo pipefail
+          R="${{ github.event.repository.name }}"
+          BACKEND=$(aws ssm get-parameter --name "/neobank/promote/$R/backend"  --query Parameter.Value --output text)
+          FRONTEND=$(aws ssm get-parameter --name "/neobank/promote/$R/frontend" --query Parameter.Value --output text)
+          echo "promoting $BACKEND"
+          bash infra/deploy-service.sh prod "$BACKEND" "$FRONTEND"

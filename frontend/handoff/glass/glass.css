@@ -1,0 +1,76 @@
+/* Havn Glass Console — tokens + primitives. Import once. See design.md. */
+:root {
+  --havn-ink: #173A2B;
+  --havn-muted: #33473D;
+  --havn-mint: #5FE0AC;
+  --havn-mint-strong: #2FE39C;
+  --havn-mint-deep: #2FA47F;
+  --havn-volt: #DDF54A;
+  --havn-ground-fallback: #AFF0D6;
+  --havn-hairline: rgba(255,255,255,.55);
+  --havn-radius: 16px;
+  --havn-glass-fill: linear-gradient(135deg, rgba(255,255,255,.36), rgba(255,255,255,.18));
+  --havn-glass-blur: blur(30px) saturate(1.9) brightness(1.06);
+  --havn-glass-border: 1px solid rgba(255,255,255,.5);
+  --havn-glass-shadow:
+    inset 0 1px 0 rgba(255,255,255,.9),
+    inset 1px 0 0 rgba(255,255,255,.4),
+    inset 0 -1px 0 rgba(255,255,255,.2),
+    0 22px 48px rgba(40,60,85,.22),
+    0 2px 6px rgba(40,60,85,.1);
+  --havn-font-ui: 'Poppins', sans-serif;
+  --havn-font-title: 'Cormorant Garamond', serif;
+}
+
+.havn-app { position: relative; overflow: hidden; font-family: var(--havn-font-ui); color: var(--havn-ink); background: var(--havn-ground-fallback); }
+.havn-app > * { position: relative; z-index: 1; }
+
+.havn-ground { position: absolute; inset: 0; z-index: 0 !important; background-size: cover; background-position: center; pointer-events: none; }
+/* film grain — ground only, never over panels */
+.havn-ground::before, .havn-ground::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23g)'/></svg>");
+}
+.havn-ground::before { mix-blend-mode: overlay; opacity: .65; }
+.havn-ground::after { mix-blend-mode: soft-light; opacity: .7; }
+
+.havn-glass {
+  background: var(--havn-glass-fill);
+  backdrop-filter: var(--havn-glass-blur);
+  -webkit-backdrop-filter: var(--havn-glass-blur);
+  border: var(--havn-glass-border);
+  border-radius: var(--havn-radius);
+  box-shadow: var(--havn-glass-shadow);
+}
+/* one per desk: set --team-accent inline or via [data-team] */
+.havn-glass--team {
+  background: linear-gradient(rgba(255,255,255,.35), rgba(255,255,255,.35)), var(--team-accent, var(--havn-mint));
+}
+
+.havn-title { font-family: var(--havn-font-title); font-weight: 600; }
+.havn-num { font-family: var(--havn-font-ui); font-weight: 300; font-variant-numeric: tabular-nums; } /* big numbers: always sans */
+.havn-label { font-size: 10.5px; color: var(--havn-muted); }
+
+.havn-btn {
+  font: 500 11px/1 var(--havn-font-ui); color: var(--havn-ink);
+  background: var(--havn-mint); border: 0; border-radius: 7px; padding: 10px 18px;
+  box-shadow: 0 4px 14px rgba(40,150,110,.35); cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.havn-btn:hover { background: var(--havn-mint-strong); box-shadow: 0 6px 18px rgba(40,150,110,.45); }
+.havn-btn--ghost { background: rgba(255,255,255,.7); box-shadow: 0 2px 8px rgba(40,60,85,.12); }
+.havn-btn--ghost:hover { background: rgba(95,224,172,.5); }
+.havn-btn:focus-visible, .havn-row:focus-visible, .havn-nav-item:focus-visible { outline: 2px solid var(--havn-mint-deep); outline-offset: 2px; }
+
+.havn-nav-item { border-radius: 7px; padding: 9px 12px; font-size: 12px; color: var(--havn-muted); cursor: pointer; transition: background 120ms ease; }
+.havn-nav-item:hover { background: rgba(95,224,172,.5); color: var(--havn-ink); }
+.havn-nav-item--active { background: rgba(255,255,255,.85); color: var(--havn-ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--havn-mint-deep), 0 2px 8px rgba(40,60,85,.12); }
+
+.havn-row { cursor: pointer; border-top: 1px solid var(--havn-hairline); transition: background 120ms ease; }
+.havn-row:hover { background: rgba(95,224,172,.45); box-shadow: inset 3px 0 0 var(--havn-mint-deep); }
+
+.havn-chip { display: inline-block; border-radius: 6px; padding: 3px 10px; font: 600 9.5px/1.3 var(--havn-font-ui); white-space: nowrap; }
+.havn-chip--approved { background: var(--havn-mint); color: var(--havn-ink); }
+.havn-chip--review { background: #BBD6F4; color: #1F3A5C; }
+.havn-chip--declined { background: #A8493A; color: #fff; }
+.havn-chip--volt { background: var(--havn-volt); color: var(--havn-ink); }

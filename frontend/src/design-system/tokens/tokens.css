@@ -1,0 +1,92 @@
+/* ============================================================================
+ * Structural tokens — scales, not decisions.
+ *
+ * Deliberately separate from theme/: these are the metrics the layout is built
+ * on (spacing rhythm, type scale, radii, motion). A theme MAY override any of
+ * them — a denser theme lowers --ds-space-*, a rounder theme raises
+ * --ds-radius-* — but a theme that changes nothing here still works, whereas a
+ * theme that sets no colours does not.
+ *
+ * Nothing in this file names a colour.
+ * ==========================================================================*/
+
+:root {
+  /* -- Spacing — 4px rhythm ---------------------------------------------- */
+  --ds-space-0: 0;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-7: 32px;
+  --ds-space-8: 40px;
+  --ds-space-9: 48px;
+  --ds-space-10: 64px;
+
+  /* -- Type scale --------------------------------------------------------- */
+  --ds-text-2xs: 10px;
+  --ds-text-xs: 11px;
+  --ds-text-sm: 12px;
+  --ds-text-md: 13px;
+  --ds-text-lg: 15px;
+  --ds-text-xl: 17px;
+  --ds-text-2xl: 21px;
+  --ds-text-3xl: 26px;
+
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+  --ds-weight-bold: 700;
+
+  /* Roles a theme may repoint. The glass direction sets large figures in the sans
+   * face at weight 300 even though titles are a serif — hence these are separate
+   * from the scale above rather than derived from it. */
+  --ds-figure-family: inherit;
+  --ds-figure-weight: var(--ds-weight-semibold);
+  --ds-display-weight: var(--ds-weight-bold);
+
+  --ds-leading-tight: 1.2;
+  --ds-leading-snug: 1.35;
+  --ds-leading-body: 1.55;
+
+  --ds-tracking-tight: -0.01em;
+  --ds-tracking-body: 0;
+  /* Table headers and field labels are the one place the system shouts, and
+   * they need the extra tracking to stay legible at 11px uppercase. */
+  --ds-tracking-label: 0.06em;
+
+  /* -- Radii -------------------------------------------------------------- */
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 6px;
+  --ds-radius-lg: 8px;
+  --ds-radius-xl: 12px;
+  --ds-radius-pill: 999px;
+
+  /* -- Borders ------------------------------------------------------------ */
+  --ds-border-width: 1px;
+  --ds-focus-width: 2px;
+  --ds-focus-offset: 2px;
+
+  /* -- Layout ------------------------------------------------------------- */
+  --ds-nav-height: 52px;
+  /* The SideNav column. Wide enough for a two-word screen name plus its hint without wrapping,
+     narrow enough that the content column still reads as the subject of the page. */
+  --ds-side-width: 232px;
+  --ds-page-width: 1400px;
+  --ds-page-pad-x: var(--ds-space-7);
+  --ds-page-pad-y: var(--ds-space-6);
+  --ds-control-height: 34px;
+  --ds-control-height-sm: 28px;
+  --ds-control-height-lg: 40px;
+
+  /* -- Motion — short, and only on colour ---------------------------------
+   * Nothing in the system moves, scales or bounces; transitions exist so a
+   * hover does not snap. `prefers-reduced-motion` zeroes them in base.css. */
+  --ds-transition: 120ms ease;
+
+  /* -- Stacking ----------------------------------------------------------- */
+  --ds-z-nav: 100;
+  --ds-z-scrim: 200;
+  --ds-z-modal: 210;
+}

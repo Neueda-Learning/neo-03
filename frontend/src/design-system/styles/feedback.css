@@ -1,0 +1,216 @@
+/* ============================================================================
+ * Feedback — what the screen says when it has nothing, is busy, or is broken.
+ * ==========================================================================*/
+
+/* -- EmptyState ----------------------------------------------------------
+ * The most-used component in this product. Every board in the v5 briefs is
+ * EMPTY until someone searches, so "nothing here" is a designed state, not an
+ * accident — and it always names the next action. */
+.ds-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-9) var(--ds-space-5);
+  border: var(--ds-border-width) dashed var(--ds-color-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-fill, var(--ds-color-surface));
+  -webkit-backdrop-filter: var(--ds-surface-backdrop, none);
+  backdrop-filter: var(--ds-surface-backdrop, none);
+  text-align: center;
+}
+
+.ds-empty--flush {
+  border: 0;
+  background: transparent;
+  padding: var(--ds-space-8) var(--ds-space-5);
+}
+
+.ds-empty__title {
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-color-text);
+}
+
+.ds-empty__body {
+  max-width: 52ch;
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-md);
+}
+
+/* -- Alert ---------------------------------------------------------------- */
+.ds-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-alert-border);
+  border-left: 3px solid var(--ds-alert-accent);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-alert-surface);
+  color: var(--ds-alert-text);
+  font-size: var(--ds-text-md);
+}
+
+.ds-alert__body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ds-alert__title {
+  font-weight: var(--ds-weight-semibold);
+}
+
+.ds-alert--positive {
+  --ds-alert-surface: var(--ds-tone-positive-surface);
+  --ds-alert-border: var(--ds-tone-positive-border);
+  --ds-alert-text: var(--ds-tone-positive-text);
+  --ds-alert-accent: var(--ds-tone-positive-accent);
+}
+.ds-alert--warning {
+  --ds-alert-surface: var(--ds-tone-warning-surface);
+  --ds-alert-border: var(--ds-tone-warning-border);
+  --ds-alert-text: var(--ds-tone-warning-text);
+  --ds-alert-accent: var(--ds-tone-warning-accent);
+}
+.ds-alert--negative {
+  --ds-alert-surface: var(--ds-tone-negative-surface);
+  --ds-alert-border: var(--ds-tone-negative-border);
+  --ds-alert-text: var(--ds-tone-negative-text);
+  --ds-alert-accent: var(--ds-tone-negative-accent);
+}
+.ds-alert--info {
+  --ds-alert-surface: var(--ds-tone-info-surface);
+  --ds-alert-border: var(--ds-tone-info-border);
+  --ds-alert-text: var(--ds-tone-info-text);
+  --ds-alert-accent: var(--ds-tone-info-accent);
+}
+.ds-alert--neutral {
+  --ds-alert-surface: var(--ds-tone-neutral-surface);
+  --ds-alert-border: var(--ds-tone-neutral-border);
+  --ds-alert-text: var(--ds-tone-neutral-text);
+  --ds-alert-accent: var(--ds-tone-neutral-accent);
+}
+
+/* -- StatusPill — a dot and a word, for liveness --------------------------
+ * /health said UP. The provider mock is DOWN. Distinct from Badge, which
+ * states a decision that was made; this states a condition that is true now. */
+.ds-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-3);
+  border: var(--ds-border-width) solid var(--ds-pill-border);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-pill-surface);
+  color: var(--ds-pill-text);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ds-status-pill--positive {
+  --ds-pill-surface: var(--ds-tone-positive-surface);
+  --ds-pill-border: var(--ds-tone-positive-border);
+  --ds-pill-text: var(--ds-tone-positive-text);
+  --ds-dot-color: var(--ds-tone-positive-accent);
+}
+.ds-status-pill--warning {
+  --ds-pill-surface: var(--ds-tone-warning-surface);
+  --ds-pill-border: var(--ds-tone-warning-border);
+  --ds-pill-text: var(--ds-tone-warning-text);
+  --ds-dot-color: var(--ds-tone-warning-accent);
+}
+.ds-status-pill--negative {
+  --ds-pill-surface: var(--ds-tone-negative-surface);
+  --ds-pill-border: var(--ds-tone-negative-border);
+  --ds-pill-text: var(--ds-tone-negative-text);
+  --ds-dot-color: var(--ds-tone-negative-accent);
+}
+.ds-status-pill--info {
+  --ds-pill-surface: var(--ds-tone-info-surface);
+  --ds-pill-border: var(--ds-tone-info-border);
+  --ds-pill-text: var(--ds-tone-info-text);
+  --ds-dot-color: var(--ds-tone-info-accent);
+}
+.ds-status-pill--neutral {
+  --ds-pill-surface: var(--ds-tone-neutral-surface);
+  --ds-pill-border: var(--ds-tone-neutral-border);
+  --ds-pill-text: var(--ds-tone-neutral-text);
+  --ds-dot-color: var(--ds-tone-neutral-accent);
+}
+
+/* -- StatusDot — the same signal without the word ------------------------- */
+.ds-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-dot-color, var(--ds-color-border-strong));
+  flex: none;
+}
+
+.ds-dot--positive {
+  --ds-dot-color: var(--ds-tone-positive-accent);
+}
+.ds-dot--warning {
+  --ds-dot-color: var(--ds-tone-warning-accent);
+}
+.ds-dot--negative {
+  --ds-dot-color: var(--ds-tone-negative-accent);
+}
+.ds-dot--info {
+  --ds-dot-color: var(--ds-tone-info-accent);
+}
+.ds-dot--neutral {
+  --ds-dot-color: var(--ds-tone-neutral-accent);
+}
+
+/* -- Spinner -------------------------------------------------------------- */
+.ds-spinner {
+  display: inline-block;
+  width: var(--ds-spinner-size, 14px);
+  height: var(--ds-spinner-size, 14px);
+  border: 2px solid var(--ds-color-border);
+  border-top-color: var(--ds-color-accent);
+  border-radius: var(--ds-radius-pill);
+  animation: ds-spin 700ms linear infinite;
+  flex: none;
+}
+
+.ds-spinner--lg {
+  --ds-spinner-size: 22px;
+}
+
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -- CodeBlock — a JSON envelope, a callback body ------------------------- */
+.ds-code {
+  margin: 0;
+  padding: var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-color-border);
+  border-radius: var(--ds-radius-md);
+  /* Opaque, for the same reason inputs are: this holds a payload someone has to
+   * read character by character. */
+  background: var(--ds-control-fill, var(--ds-color-surface-sunken));
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-snug);
+  overflow-x: auto;
+  white-space: pre;
+  max-height: var(--ds-code-max, none);
+}
+
+.ds-code--scroll {
+  --ds-code-max: 340px;
+  overflow-y: auto;
+}

@@ -1,0 +1,63 @@
+# Rendered at container start by nginx's envsubst (/etc/nginx/templates/*.template).
+# ${BASE_PATH}, ${BACKEND_HOST} and ${RESOLVER} are substituted; nginx runtime variables
+# like $uri and $args are not, so envsubst leaves them intact.
+#
+# ${BASE_PATH} is "" locally and "/neo-01" in the deployed stack, where every UI
+# shares ONE port and is told apart by its path. With it empty this file renders to
+# exactly the root-served config it has always been, so `docker compose up` is unaffected.
+# It MUST agree with the APP_BASE_PATH the bundle was built with — Vite writes asset URLs
+# into index.html at build time.
+server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Only consulted for NAMES: Docker's embedded DNS locally, the VPC resolver on Fargate.
+  # With BACKEND_HOST a literal IP (the co-located container) nothing is ever resolved,
+  # but the directive must still name something that exists.
+  resolver ${RESOLVER} valid=10s ipv6=off;
+
+  # ---- API + ops, proxied to this slot's backend so the browser stays same-origin ----
+  #
+  # `^~` matters: it makes this a prefix match that STOPS nginx looking at the regex
+  # location below. Without it the catch-all SPA regex is checked first and swallows
+  # every API call.
+  #
+  # The hostname goes through a *variable* on purpose. With a literal
+  # `proxy_pass http://host:8080`, nginx resolves the name once at startup and caches it
+  # for the life of the process — so a recreated backend (a crash-restart, a rolling
+  # deploy) comes back on a new IP and this front end silently keeps talking to the old
+  # one. A variable forces a fresh lookup per request. The cost of a variable is that
+  # nginx no longer appends the matched URI, so the rewrite strips the prefix and $uri
+  # supplies the path explicitly.
+  location ^~ ${BASE_PATH}/api/ {
+    set $api_backend ${BACKEND_HOST};
+    rewrite ^${BASE_PATH}(/api/.*)$ $1 break;
+    proxy_pass http://$api_backend:8080$uri$is_args$args;
+  }
+
+  # Exact matches, so they also beat the regex below. The ALB target group health-checks
+  # ${BASE_PATH}/health directly, bypassing its own routing rules — if this path and the
+  # target group's HealthCheckPath ever disagree, every task is killed as unhealthy and
+  # the deploy hangs looking like a mystery.
+  location = ${BASE_PATH}/health {
+    set $health_backend ${BACKEND_HOST};
+    proxy_pass http://$health_backend:8080/health;
+  }
+  location = ${BASE_PATH}/info {
+    set $info_backend ${BACKEND_HOST};
+    proxy_pass http://$info_backend:8080/info;
+  }
+
+  # ---- the single-page app ----
+  #
+  # One regex covers all three shapes: "/neo-01" (no trailing slash, which is the URL
+  # people actually paste), "/neo-01/", and "/neo-01/assets/index-abc.js". The
+  # capture is the path with the prefix removed, so files are served from the image root
+  # no matter what prefix they are published under. Anything that is not a real file is
+  # index.html, because the router lives in the browser.
+  location ~ ^${BASE_PATH}/?(.*)$ {
+    try_files /$1 /index.html;
+  }
+}

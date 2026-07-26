@@ -1,0 +1,359 @@
+/* ============================================================================
+ * Data — tables, key/value panels, metrics, charts, timelines.
+ * ==========================================================================*/
+
+/* -- DataTable ------------------------------------------------------------ */
+/* The table's shell is a panel like any other. The ROWS are not — see
+ * `.ds-table tbody td`: a backdrop-filter per row, forty rows deep, is the classic
+ * way to make a board janky, and the blur belongs to the panel edge anyway. */
+.ds-table-wrap {
+  border: var(--ds-surface-border, var(--ds-border-width) solid var(--ds-color-border));
+  border-radius: var(--ds-radius-lg);
+  overflow: hidden;
+  background: var(--ds-surface-fill, var(--ds-color-canvas));
+  -webkit-backdrop-filter: var(--ds-surface-backdrop, none);
+  backdrop-filter: var(--ds-surface-backdrop, none);
+  box-shadow: var(--ds-surface-shadow, none);
+}
+
+.ds-table-scroll {
+  overflow-x: auto;
+}
+
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ds-text-md);
+}
+
+.ds-table thead th {
+  background: var(--ds-color-surface-sunken);
+  border-bottom: var(--ds-border-width) solid var(--ds-color-border);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  text-align: left;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+  white-space: nowrap;
+}
+
+.ds-table tbody td {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  vertical-align: middle;
+  color: var(--ds-color-text);
+}
+
+.ds-table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.ds-table__row--clickable {
+  cursor: pointer;
+  transition: background var(--ds-transition);
+}
+
+.ds-table__row--clickable:hover td {
+  background: var(--ds-color-surface-hover);
+}
+
+.ds-table__row--selected td {
+  background: var(--ds-color-accent-soft);
+}
+
+.ds-table__cell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-table__cell--mono {
+  font-family: var(--ds-font-mono);
+  font-size: 0.94em;
+}
+
+.ds-table__cell--tight {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* The row a click expands — the per-application event log. */
+.ds-table__detail > td {
+  background: var(--ds-color-surface);
+  padding: var(--ds-space-4) var(--ds-space-5);
+}
+
+/* "6 matches · newest first · showing at most 10 — refine your search to narrow
+ * further". The cap is a platform rule (DECISIONS.md §3), so the table renders
+ * this itself rather than leaving ten teams to remember it. */
+.ds-table__footnote {
+  margin-top: var(--ds-space-2);
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+}
+
+/* -- KeyValue ------------------------------------------------------------- */
+.ds-kv {
+  display: grid;
+  grid-template-columns: minmax(0, var(--ds-kv-key, 42%)) minmax(0, 1fr);
+  gap: var(--ds-space-3) var(--ds-space-4);
+  font-size: var(--ds-text-md);
+}
+
+.ds-kv--stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ds-space-4);
+}
+
+.ds-kv__key {
+  color: var(--ds-color-text-muted);
+}
+
+.ds-kv__value {
+  color: var(--ds-color-text);
+  overflow-wrap: anywhere;
+}
+
+.ds-kv__value--mono {
+  font-family: var(--ds-font-mono);
+  font-size: 0.94em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-kv--stacked .ds-kv__key {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  margin-bottom: var(--ds-space-1);
+}
+
+/* -- MetricTile ----------------------------------------------------------- */
+.ds-metric {
+  padding: var(--ds-space-4) var(--ds-space-5);
+  border: var(--ds-surface-border, var(--ds-border-width) solid var(--ds-color-border));
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-fill, var(--ds-color-surface));
+  -webkit-backdrop-filter: var(--ds-surface-backdrop, none);
+  backdrop-filter: var(--ds-surface-backdrop, none);
+  box-shadow: var(--ds-surface-shadow, none);
+}
+
+.ds-metric__label {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+}
+
+/* Large figures are always the sans face, never display — the handoff is explicit
+ * about it, and a serif numeral column does not align. */
+.ds-metric__value {
+  margin-top: var(--ds-space-2);
+  font-family: var(--ds-figure-family, inherit);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-figure-weight);
+  line-height: var(--ds-leading-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-metric-ink, var(--ds-color-text));
+}
+
+.ds-metric__hint {
+  margin-top: var(--ds-space-1);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-color-text-muted);
+}
+
+.ds-metric--positive {
+  --ds-metric-ink: var(--ds-tone-positive-ink, var(--ds-tone-positive-accent));
+}
+.ds-metric--warning {
+  --ds-metric-ink: var(--ds-tone-warning-ink, var(--ds-tone-warning-accent));
+}
+.ds-metric--negative {
+  --ds-metric-ink: var(--ds-tone-negative-ink, var(--ds-tone-negative-accent));
+}
+.ds-metric--info {
+  --ds-metric-ink: var(--ds-tone-info-ink, var(--ds-tone-info-accent));
+}
+.ds-metric--neutral {
+  --ds-metric-ink: var(--ds-tone-neutral-ink, var(--ds-tone-neutral-accent));
+}
+
+/* -- BarChart — horizontal ranked bars ------------------------------------
+ * Ranked reason codes, per-service counts. Horizontal because the labels are
+ * things like VER_LIMIT_OUTSIDE_PRODUCT_RANGE and vertical bars cannot hold
+ * them. */
+.ds-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+}
+
+.ds-bars__row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--ds-bars-label, 200px)) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+
+.ds-bars__label {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-bars__track {
+  height: 18px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-series-track);
+  overflow: hidden;
+}
+
+/* `display: block` is load-bearing: the fill is a <span> inside the track, and an
+ * inline box ignores both width and height — the bar would render as nothing. */
+.ds-bars__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bar-color, var(--ds-series-1));
+  transition: width var(--ds-transition);
+}
+
+.ds-bars__value {
+  min-width: 3ch;
+  text-align: right;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-color-text);
+}
+
+/* -- Timeline ------------------------------------------------------------- */
+.ds-timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-timeline__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) 0;
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+}
+
+.ds-timeline__item:first-child {
+  border-top: 0;
+}
+
+.ds-timeline__marker {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-timeline-accent, var(--ds-color-border-strong));
+}
+
+.ds-timeline__item--positive {
+  --ds-timeline-accent: var(--ds-tone-positive-accent);
+}
+.ds-timeline__item--warning {
+  --ds-timeline-accent: var(--ds-tone-warning-accent);
+}
+.ds-timeline__item--negative {
+  --ds-timeline-accent: var(--ds-tone-negative-accent);
+}
+.ds-timeline__item--info {
+  --ds-timeline-accent: var(--ds-tone-info-accent);
+}
+.ds-timeline__item--neutral {
+  --ds-timeline-accent: var(--ds-tone-neutral-accent);
+}
+
+.ds-timeline__body {
+  min-width: 0;
+}
+
+.ds-timeline__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex-wrap: wrap;
+  font-size: var(--ds-text-md);
+}
+
+.ds-timeline__detail {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds-timeline__when {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* -- StepTrail — the saga, as dots ----------------------------------------
+ * Eight steps in a row, one dot each, tone per outcome. Compact enough to sit
+ * in a table cell. */
+.ds-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.ds-steps__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-step-accent, var(--ds-color-border));
+  border: var(--ds-border-width) solid transparent;
+}
+
+.ds-steps__dot--positive {
+  --ds-step-accent: var(--ds-tone-positive-accent);
+}
+.ds-steps__dot--warning {
+  --ds-step-accent: var(--ds-tone-warning-accent);
+}
+.ds-steps__dot--negative {
+  --ds-step-accent: var(--ds-tone-negative-accent);
+}
+.ds-steps__dot--info {
+  --ds-step-accent: var(--ds-tone-info-accent);
+}
+.ds-steps__dot--neutral {
+  --ds-step-accent: transparent;
+  border-color: var(--ds-color-border-strong);
+}
+
+/* The step being worked right now. A ring, not an animation. */
+.ds-steps__dot--current {
+  box-shadow: 0 0 0 3px var(--ds-color-accent-soft);
+}
+
+/* A row whose left edge states its outcome. Optional — most boards put the
+ * outcome in a Badge column instead, which is clearer. */
+.ds-table__row--positive td:first-child {
+  box-shadow: inset 3px 0 0 var(--ds-tone-positive-accent);
+}
+.ds-table__row--warning td:first-child {
+  box-shadow: inset 3px 0 0 var(--ds-tone-warning-accent);
+}
+.ds-table__row--negative td:first-child {
+  box-shadow: inset 3px 0 0 var(--ds-tone-negative-accent);
+}
+.ds-table__row--info td:first-child {
+  box-shadow: inset 3px 0 0 var(--ds-tone-info-accent);
+}
+.ds-table__row--neutral td:first-child {
+  box-shadow: inset 3px 0 0 var(--ds-tone-neutral-accent);
+}

@@ -1,0 +1,85 @@
+/* ============================================================================
+ * Overlay — the one place the system is allowed a shadow.
+ * ==========================================================================*/
+
+.ds-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ds-space-6);
+  background: var(--ds-scrim);
+}
+
+.ds-modal {
+  position: relative;
+  z-index: var(--ds-z-modal);
+  width: 100%;
+  max-width: var(--ds-modal-width, 560px);
+  max-height: calc(100vh - var(--ds-space-10));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--ds-radius-xl);
+  /* The one surface that stays opaque under every theme: a confirmation must be
+   * readable over whatever it happens to be covering. */
+  background: var(--ds-control-fill, var(--ds-color-canvas));
+  -webkit-backdrop-filter: var(--ds-surface-backdrop, none);
+  backdrop-filter: var(--ds-surface-backdrop, none);
+  border: var(--ds-surface-border, none);
+  box-shadow: var(--ds-shadow-overlay);
+  overflow: hidden;
+}
+
+.ds-modal--wide {
+  --ds-modal-width: 820px;
+}
+
+.ds-modal__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-5) var(--ds-space-6);
+  border-bottom: var(--ds-border-width) solid var(--ds-color-border-subtle);
+}
+
+.ds-modal__title {
+  font-family: var(--ds-font-display, inherit);
+  font-size: var(--ds-text-xl);
+  font-weight: var(--ds-display-weight);
+  letter-spacing: var(--ds-tracking-tight);
+}
+
+.ds-modal__close {
+  margin-left: auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-xl);
+  line-height: 1;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  transition: background var(--ds-transition), color var(--ds-transition);
+}
+
+.ds-modal__close:hover {
+  background: var(--ds-color-surface-sunken);
+  color: var(--ds-color-text);
+}
+
+.ds-modal__body {
+  padding: var(--ds-space-6);
+  overflow-y: auto;
+}
+
+.ds-modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-4) var(--ds-space-6);
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  background: var(--ds-color-surface);
+}

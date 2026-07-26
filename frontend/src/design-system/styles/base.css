@@ -1,0 +1,132 @@
+/* ============================================================================
+ * Reset, element defaults, and the handful of helpers every screen needs.
+ * Everything here reads tokens; nothing here names a colour or a pixel value
+ * that is not a token.
+ * ==========================================================================*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* The ground fallback, not the canvas: under a theme whose canvas is
+   * transparent (glass), the body is what is actually seen behind the ground
+   * image while it loads, and wherever the image does not reach. */
+  background: var(--ds-ground-fallback, var(--ds-color-canvas));
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md);
+  line-height: var(--ds-leading-body);
+  letter-spacing: var(--ds-tracking-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+ol,
+ul {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--ds-color-accent-text);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* One focus treatment for the entire product. Never the browser default, never
+ * `outline: none` without a replacement. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: var(--ds-focus-width) solid var(--ds-color-focus);
+  outline-offset: var(--ds-focus-offset);
+  border-radius: var(--ds-radius-sm);
+}
+
+/* Figures are tabular everywhere so columns of numbers line up. */
+.ds-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Titles, where a theme gives display its own face. */
+.ds-display {
+  font-family: var(--ds-font-display, inherit);
+  font-weight: var(--ds-display-weight);
+}
+
+.ds-mono {
+  font-family: var(--ds-font-mono);
+  font-size: 0.94em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-muted {
+  color: var(--ds-color-text-muted);
+}
+
+/* The 11px uppercase label — table headers, field labels, section eyebrows. */
+.ds-label {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+}
+
+.ds-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

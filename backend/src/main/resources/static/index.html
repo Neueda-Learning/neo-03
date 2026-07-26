@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>neo-bank onboarding module — status</title>
+    <style>
+      :root { --ink:#1c2430; --muted:#6b7683; --line:#e3e7ec; --brand:#1f6feb;
+              --up:#1a7f37; --down:#c9372c; --warn:#b7791f; }
+      * { box-sizing: border-box; }
+      body { margin:0; background:#f6f7f9; color:var(--ink); font:14px/1.5 -apple-system,
+             BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+      main { max-width:900px; margin:0 auto; padding:24px 16px 48px; }
+      .bar { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--line);
+             border-radius:12px; padding:14px 18px; margin-bottom:18px; }
+      .pill { font-size:12px; font-weight:700; padding:5px 10px; border-radius:999px; color:#fff;
+              background:var(--muted); }
+      .up { background:var(--up); } .down { background:var(--down); }
+      .who { font-weight:600; } .sub { color:var(--muted); font-size:13px; }
+      .spacer { margin-left:auto; }
+      table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line);
+              border-radius:12px; overflow:hidden; }
+      th,td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); }
+      th { font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+      .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+      .st { font-size:11px; font-weight:700; padding:3px 8px; border-radius:999px;
+            background:#eef1f4; color:var(--muted); }
+      .st-in-progress { background:#e7f0fe; color:var(--brand); }
+      .st-ACCEPTED { background:#e6f4ea; color:var(--up); }
+      .st-REJECTED { background:#fdecea; color:var(--down); }
+      .st-REFERRED { background:#fdf4e3; color:var(--warn); }
+      .empty { padding:28px; text-align:center; color:var(--muted); }
+      .note { color:var(--muted); font-size:12px; margin-top:14px; text-align:center; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="bar">
+        <span id="pill" class="pill">…</span>
+        <div>
+          <div class="who" id="who">module</div>
+          <div class="sub" id="sub">—</div>
+        </div>
+        <span class="spacer sub" id="count"></span>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Application</th><th>Status</th><th>Answered</th></tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td colspan="3" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+
+      <p class="note">
+        Served by this service's Spring Boot. The richer React UI is the
+        <code>frontend</code> container.
+      </p>
+    </main>
+    <script src="/status.js"></script>
+  </body>
+</html>

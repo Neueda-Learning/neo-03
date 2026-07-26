@@ -1,0 +1,83 @@
+spring:
+  application:
+    name: ${SERVICE_ID:neo03}
+
+  # Dev defaults point at this repo's own docker-compose MySQL (host port 3307).
+  # In the system stack (neo-00/docker-compose.yml) these are overridden by env.
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/neo_03?createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:appuser}
+    password: ${DB_PASSWORD:apppass}
+
+  jpa:
+    # Liquibase owns the schema; Hibernate only validates that entities match it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  # The pool the decision runs on — Spring Boot's own `applicationTaskExecutor`, so there is no
+  # bean to write. The thread-name prefix is what proves, in the logs, that your rules did NOT
+  # run on the request thread:
+  #   [nio-8080-exec-1]  RECEIVED SIM-01 …
+  #   [module-worker-1]  DECIDED  SIM-01 -> ACCEPTED …
+  # Raise the pool size if your rules call a slow mock — that is what limits how many
+  # applications you can decide at once.
+  task:
+    execution:
+      thread-name-prefix: module-worker-
+      pool:
+        core-size: ${WORKER_POOL_SIZE:8}
+
+# Who this service is and how it behaves. Every value is env-overridable, which is how
+# one image serves as all ten services in the system compose.
+service:
+  id: ${SERVICE_ID:neo03}
+  name: ${SERVICE_NAME:Identity Verification (KYC)}
+  # Who owns this module. Shown in the UI's identity box, so set it to your own team or the
+  # next person to open the app will think they are looking at team 01's work.
+  team: ${SERVICE_TEAM:Team 03}
+  # BIAN domain this module owns — verification / policy / kyc / screening / credit /
+  # agreement / account / card / support / analytics. Reported on /info.
+  domain: ${SERVICE_DOMAIN:kyc}
+  version: 0.1.0-SNAPSHOT
+  # Where to POST the decision callback. Three things can be listening there:
+  #   http://sidecar:8080        the mock orchestrator in this repo's compose (the default there)
+  #   http://localhost:9000      that same sidecar, from a module you run in your IDE (this default)
+  #   http://orchestrator:8080   the REAL orchestrator, in the neo-00 system stack
+  # Nothing in the module changes between them — only this value.
+  orchestrator-url: ${ORCHESTRATOR_URL:http://localhost:9000}
+  # Comma-separated external systems this module fakes — the "what has been mocked" register,
+  # served live on /info so it cannot go stale the way a paragraph in a document does. Empty
+  # means you are claiming nothing is mocked.
+  mocked-dependencies: ${MOCKED_DEPENDENCIES:id-verification-provider}
+
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Never leak a stack trace — GlobalExceptionHandler returns a controlled JSON shape.
+  error:
+    include-message: never
+    include-stacktrace: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    liquibase: INFO

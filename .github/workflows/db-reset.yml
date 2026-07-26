@@ -1,0 +1,89 @@
+name: Database repair
+
+# How a team fixes its OWN database on dev or prod. Teams have no AWS credentials — the only
+# route from this repo to AWS is the OIDC role assumed inside a workflow — so the repair has
+# to be a button here rather than a script someone runs on a laptop.
+#
+# Deliberately NOT an input on pipeline.yml: that dispatch form already carries `promote`, and
+# a mis-click there must never be able to mean "wipe the database".
+#
+# The work is infra/db-reset.sh (read its header for which action fixes what). In short:
+#   unlock — a task died mid-migration and left DATABASECHANGELOGLOCK held, so the app now
+#            hangs at startup on "waiting for changelog lock". Clears the row. No data loss.
+#   reset  — the schema is unrecoverable (a changeset was edited after it applied, or one
+#            failed halfway). Drops it, recreates it, and Liquibase rebuilds from the
+#            changelog on the next startup. EVERYTHING IN THE SCHEMA IS DESTROYED.
+#
+# Not for `Schema-validation: missing table/column ...` — that means your entity and your
+# changelog disagree. Add a changeset; the database is fine.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment
+        type: choice
+        options: [dev, prod]
+        required: true
+      action:
+        description: "unlock = release a stuck changelog lock · reset = DESTROY the schema and rebuild"
+        type: choice
+        options: [unlock, reset]
+        required: true
+      confirm:
+        description: "For reset only: type this repo's DbName (see infra/env/<env>.params)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  id-token: write     # OIDC — assume this repo's per-repo deploy role
+  contents: read
+
+# The pipeline's own group, so a repair can never run alongside a deploy of this service.
+concurrency:
+  group: neobank-${{ github.event.repository.name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: ${{ inputs.action }} · ${{ inputs.environment }}
+    # Same enable flags every deploy job honours. Without this, turning a repo's deploys off
+    # would still leave its database button live — a bypass of the switch, not a repair tool.
+    # Both are REPOSITORY variables: a job-level `if` cannot read environment variables.
+    if: ${{ (inputs.environment == 'dev'  && vars.DEV_DEPLOY_ENABLED  == 'true') ||
+            (inputs.environment == 'prod' && vars.PROD_DEPLOY_ENABLED == 'true') }}
+    runs-on: ubuntu-latest
+    # THIS is the gate. Selecting prod lands the job on the `prod` environment, which already
+    # carries a required reviewer and a main-only deployment-branch policy — so a team can
+    # request a prod repair, and only an approver can let it run. dev has no gate and runs
+    # immediately, which is the whole point.
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail before touching AWS if the confirmation doesn't match. This is a TYPO GUARD, not
+      # an authorization gate — the string is sitting in this repo's own env params, so anyone
+      # who can dispatch can read it. The gate is the environment above.
+      - name: Confirm a destructive reset
+        if: ${{ inputs.action == 'reset' }}
+        run: |
+          set -euo pipefail
+          DBNAME=$(sed -n 's/^DbName=//p' "infra/env/${{ inputs.environment }}.params")
+          if [ "${{ inputs.confirm }}" != "$DBNAME" ]; then
+            echo "::error::reset needs confirm='$DBNAME' (the DbName in infra/env/${{ inputs.environment }}.params)"
+            exit 1
+          fi
+          echo "confirmed: dropping $DBNAME on ${{ inputs.environment }}"
+
+      - name: Assume the deploy role
+        # The per-repo deploy role — the same one the pipeline uses. It already carries ecs:*
+        # and PassRole on the task execution role, which is what running the shared db-init
+        # task needs, so this workflow adds no new AWS permission and no new GitHub variable.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Repair the schema
+        env: { AWS_REGION: "${{ vars.AWS_REGION }}" }
+        run: bash infra/db-reset.sh "${{ inputs.environment }}" "${{ inputs.action }}" --yes

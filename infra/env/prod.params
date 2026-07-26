@@ -1,0 +1,14 @@
+# neo-03's OWN service (module 01: Identity Verification (KYC)), on prod. Identical to
+# dev.params — a module carries no environment-specific values (the orchestrator URL is built
+# from the Cloud Map namespace in the template). The pipeline adds EnvironmentName + the
+# PINNED @sha256 images + DbEndpoint + AlbDnsName.
+ServiceName=neo-03
+Role=module
+PathPrefix=/neo-03
+ListenerRulePriority=30
+DbName=neo_03
+ServiceId=neo03
+DisplayName=Identity Verification (KYC)
+Domain=kyc
+Team=Team 03
+MockedDependencies=id-verification-provider

@@ -1,0 +1,64 @@
+# ⚠️ PLACEHOLDER TABLE — you are expected to delete this.
+#
+# Three columns so the skeleton has something to write and something to show: one row per
+# application, and a status that is always ACCEPTED. It is NOT your module's data model.
+#
+# Your real table is whatever your business topic needs — a verification case and its checks, a
+# screening hit and its match score, a credit decision and the limit it approved. Different
+# columns, probably more than one table.
+#
+# TO REPLACE IT
+#   1. Add 002-create-<your-table>.yaml here, creating your table, and include it in
+#      db.changelog-master.yaml.
+#   2. Add your entity, repository and view record beside the DemoShowcase ones.
+#   3. Once nothing references DemoShowcase, add a change set that drops demo_showcase and
+#      delete the class.
+#
+# NEVER EDIT THIS FILE once it has run. Liquibase stores a checksum of every applied change set;
+# editing one makes the application refuse to start on any database that already has it, and on a
+# deployed environment that is a crash-loop only a schema reset can clear. Add a new change set.
+#
+# Do not grow columns onto demo_showcase instead. A table called "demo showcase" holding your real
+# credit decisions is exactly the kind of thing that survives to production.
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-demo-showcase
+      author: neo-03
+      changes:
+        - createTable:
+            tableName: demo_showcase
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  # The id from the request ENVELOPE, not from inside the application object.
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  # ACCEPTED | REJECTED | REFERRED, stored as text so the database is readable.
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: demo_showcase
+            indexName: idx_demo_showcase_application
+            columns:
+              - column:
+                  name: application_id
+      rollback:
+        - dropTable:
+            tableName: demo_showcase

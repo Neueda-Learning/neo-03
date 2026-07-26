@@ -1,0 +1,323 @@
+/* ============================================================================
+ * Core — the controls and containers every screen is built from.
+ * ==========================================================================*/
+
+/* -- Button --------------------------------------------------------------- */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  height: var(--ds-control-height);
+  padding: 0 var(--ds-space-4);
+  border: var(--ds-border-width) solid transparent;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-sunken);
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  white-space: nowrap;
+  transition: background var(--ds-transition), color var(--ds-transition),
+    border-color var(--ds-transition);
+}
+
+.ds-btn:hover:not(:disabled) {
+  background: var(--ds-color-surface-active);
+}
+
+.ds-btn:disabled,
+.ds-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ds-btn--primary {
+  background: var(--ds-color-accent);
+  border-color: var(--ds-color-accent);
+  color: var(--ds-color-accent-ink);
+}
+
+.ds-btn--primary:hover:not(:disabled) {
+  background: var(--ds-color-accent-hover);
+  border-color: var(--ds-color-accent-hover);
+}
+
+.ds-btn--primary:active:not(:disabled) {
+  background: var(--ds-color-accent-press);
+  border-color: var(--ds-color-accent-press);
+}
+
+.ds-btn--secondary {
+  background: var(--ds-control-fill, var(--ds-color-canvas));
+  border-color: var(--ds-color-border);
+}
+
+.ds-btn--secondary:hover:not(:disabled) {
+  background: var(--ds-color-surface-hover);
+}
+
+.ds-btn--ghost {
+  background: transparent;
+}
+
+.ds-btn--ghost:hover:not(:disabled) {
+  background: var(--ds-color-surface-sunken);
+}
+
+/* Destructive is a tone, not a second accent — it borrows the negative tone so
+ * a theme only has to define the tone once. */
+.ds-btn--danger {
+  background: var(--ds-tone-negative-surface);
+  border-color: var(--ds-tone-negative-border);
+  color: var(--ds-tone-negative-text);
+}
+
+.ds-btn--danger:hover:not(:disabled) {
+  background: var(--ds-tone-negative-border);
+}
+
+.ds-btn--sm {
+  height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-3);
+  font-size: var(--ds-text-sm);
+}
+
+.ds-btn--lg {
+  height: var(--ds-control-height-lg);
+  padding: 0 var(--ds-space-5);
+  font-size: var(--ds-text-lg);
+}
+
+.ds-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* -- Badge — an outcome, in one of five tones ----------------------------- */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  padding: 2px var(--ds-space-3);
+  border: var(--ds-border-width) solid var(--ds-badge-border);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-badge-surface);
+  color: var(--ds-badge-text);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.7;
+}
+
+.ds-badge--positive {
+  --ds-badge-surface: var(--ds-tone-positive-surface);
+  --ds-badge-border: var(--ds-tone-positive-border);
+  --ds-badge-text: var(--ds-tone-positive-text);
+}
+
+.ds-badge--warning {
+  --ds-badge-surface: var(--ds-tone-warning-surface);
+  --ds-badge-border: var(--ds-tone-warning-border);
+  --ds-badge-text: var(--ds-tone-warning-text);
+}
+
+.ds-badge--negative {
+  --ds-badge-surface: var(--ds-tone-negative-surface);
+  --ds-badge-border: var(--ds-tone-negative-border);
+  --ds-badge-text: var(--ds-tone-negative-text);
+}
+
+.ds-badge--info {
+  --ds-badge-surface: var(--ds-tone-info-surface);
+  --ds-badge-border: var(--ds-tone-info-border);
+  --ds-badge-text: var(--ds-tone-info-text);
+}
+
+.ds-badge--neutral {
+  --ds-badge-surface: var(--ds-tone-neutral-surface);
+  --ds-badge-border: var(--ds-tone-neutral-border);
+  --ds-badge-text: var(--ds-tone-neutral-text);
+}
+
+.ds-badge--sm {
+  padding: 0 var(--ds-space-2);
+  font-size: var(--ds-text-2xs);
+}
+
+/* -- Chip — a filter you can switch on ------------------------------------ */
+.ds-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex-wrap: wrap;
+}
+
+.ds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: var(--ds-control-height);
+  padding: 0 var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-color-border);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-control-fill, var(--ds-color-canvas));
+  color: var(--ds-color-text-secondary);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  white-space: nowrap;
+  transition: background var(--ds-transition), color var(--ds-transition),
+    border-color var(--ds-transition);
+}
+
+.ds-chip:hover:not(:disabled) {
+  background: var(--ds-color-surface-hover);
+}
+
+.ds-chip[aria-pressed='true'] {
+  background: var(--ds-color-accent-soft);
+  border-color: var(--ds-color-accent);
+  color: var(--ds-color-accent-text);
+}
+
+.ds-chip__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-color-text-muted);
+  font-weight: var(--ds-weight-regular);
+}
+
+.ds-chip[aria-pressed='true'] .ds-chip__count {
+  color: inherit;
+}
+
+/* A static chip — a reason code, a module name. Not clickable. */
+.ds-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--ds-space-2);
+  border: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-color-surface-sunken);
+  color: var(--ds-color-text-secondary);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  white-space: nowrap;
+}
+
+/* -- Card -----------------------------------------------------------------
+ * The panel. Under a theme that sets the four `--ds-surface-*` hooks this IS the
+ * glass panel — fill, backdrop blur, hairline border and the inset-highlight
+ * shadow stack all come from the theme, so no component knows it is frosted.
+ *
+ * Every hook has a flat fallback, so a theme that sets none of them still gets a
+ * perfectly ordinary card. */
+.ds-card {
+  background: var(--ds-surface-fill, var(--ds-color-surface));
+  -webkit-backdrop-filter: var(--ds-surface-backdrop, none);
+  backdrop-filter: var(--ds-surface-backdrop, none);
+  border: var(--ds-surface-border, var(--ds-border-width) solid var(--ds-color-border));
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-surface-shadow, none);
+  overflow: hidden;
+}
+
+.ds-card--flush {
+  background: var(--ds-color-canvas);
+}
+
+/* Wraps rather than overflows: card titles here are real names — "1. Application
+ * Verification", "Fraud & AML Screening" — and a badge beside them in a 320px
+ * column runs out of room long before the title is at fault. */
+.ds-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+  flex-wrap: wrap;
+  padding: var(--ds-space-4) var(--ds-space-5);
+  border-bottom: var(--ds-border-width) solid var(--ds-color-border-subtle);
+}
+
+.ds-card__title {
+  min-width: 0;
+  font-family: var(--ds-font-display, inherit);
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-display-weight);
+  line-height: var(--ds-leading-snug);
+  color: var(--ds-color-text);
+}
+
+.ds-card__subtitle {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-regular);
+}
+
+.ds-card__head-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.ds-card__body {
+  padding: var(--ds-space-5);
+}
+
+.ds-card__body--tight {
+  padding: 0;
+}
+
+.ds-card__foot {
+  padding: var(--ds-space-3) var(--ds-space-5);
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+}
+
+/* A card whose left edge states its outcome — the rule-result cards on every
+ * case-detail screen. */
+.ds-card--toned {
+  border-left: 3px solid var(--ds-card-accent, var(--ds-color-border));
+}
+
+.ds-card--positive {
+  --ds-card-accent: var(--ds-tone-positive-accent);
+}
+.ds-card--warning {
+  --ds-card-accent: var(--ds-tone-warning-accent);
+}
+.ds-card--negative {
+  --ds-card-accent: var(--ds-tone-negative-accent);
+}
+.ds-card--info {
+  --ds-card-accent: var(--ds-tone-info-accent);
+}
+.ds-card--neutral {
+  --ds-card-accent: var(--ds-tone-neutral-accent);
+}
+
+/* -- Divider -------------------------------------------------------------- */
+.ds-divider {
+  height: var(--ds-border-width);
+  border: 0;
+  background: var(--ds-color-border-subtle);
+  margin: var(--ds-space-4) 0;
+}
+
+.ds-divider--vertical {
+  width: var(--ds-border-width);
+  height: auto;
+  align-self: stretch;
+  margin: 0 var(--ds-space-2);
+}
+
+/* -- Caption --------------------------------------------------------------
+ * The small print under a panel that states a rule: "fetched on open — never
+ * stored". Small, muted, never a colour. */
+.ds-caption {
+  margin-top: var(--ds-space-2);
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-snug);
+}

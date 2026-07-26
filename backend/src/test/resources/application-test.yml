@@ -1,0 +1,27 @@
+spring:
+  # Tests run against in-memory H2 in MySQL-compatibility mode — no Docker needed.
+  datasource:
+    url: jdbc:h2:mem:neotest;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+# Point the callback at a dead port so nothing escapes the JVM when one fires.
+# ModuleApplicationTests runs the decision on the test thread (see its
+# SameThreadExecutor), so the whole receive -> decide -> callback loop is deterministic here.
+#
+# `domain` and `mocked-dependencies` are set to real-looking values on purpose: they are the
+# two fields on /info that a team must fill in for themselves, and a test asserting them is
+# what notices if the plumbing that serves them ever breaks.
+service:
+  id: neo03
+  name: Identity Verification (KYC) (test)
+  team: Team 03
+  domain: kyc
+  orchestrator-url: http://localhost:9
+  mocked-dependencies: id-verification-provider, sanctions-list

@@ -1,0 +1,207 @@
+/* ============================================================================
+ * Forms — one control surface, one error treatment, one required marker.
+ * ==========================================================================*/
+
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  min-width: 0;
+}
+
+.ds-field__label {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-color-text-muted);
+}
+
+.ds-field__required {
+  color: var(--ds-tone-negative-accent);
+  margin-left: 2px;
+}
+
+.ds-field__hint {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-color-text-muted);
+}
+
+/* Field-level reason codes drive this — module 1's whole purpose is pointing at
+ * the exact field to fix. */
+.ds-field__error {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-tone-negative-text);
+}
+
+.ds-input,
+.ds-select,
+.ds-textarea {
+  width: 100%;
+  min-width: 0;
+  height: var(--ds-control-height);
+  padding: 0 var(--ds-space-3);
+  border: var(--ds-border-width) solid var(--ds-color-border);
+  border-radius: var(--ds-radius-md);
+  /* Never glass. A JSON envelope in a 16-row textarea over a blurred pattern is
+   * unreadable, and nesting backdrop-filter inside backdrop-filter is where
+   * browsers stop agreeing. Controls get a near-opaque fill instead. */
+  background: var(--ds-control-fill, var(--ds-color-canvas));
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-md);
+  transition: border-color var(--ds-transition), background var(--ds-transition);
+}
+
+.ds-input::placeholder,
+.ds-textarea::placeholder {
+  color: var(--ds-color-text-muted);
+}
+
+.ds-input:hover:not(:disabled),
+.ds-select:hover:not(:disabled),
+.ds-textarea:hover:not(:disabled) {
+  background: var(--ds-control-fill-hover, var(--ds-control-fill, var(--ds-color-canvas)));
+  border-color: var(--ds-color-border-strong);
+}
+
+.ds-input:disabled,
+.ds-select:disabled,
+.ds-textarea:disabled {
+  background: var(--ds-color-surface-sunken);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ds-input--invalid,
+.ds-select--invalid,
+.ds-textarea--invalid {
+  border-color: var(--ds-tone-negative-accent);
+  background: var(--ds-tone-negative-surface);
+}
+
+.ds-input--mono,
+.ds-textarea--mono {
+  font-family: var(--ds-font-mono);
+  font-size: 0.94em;
+}
+
+.ds-textarea {
+  height: auto;
+  min-height: 120px;
+  padding: var(--ds-space-3);
+  line-height: var(--ds-leading-body);
+  resize: vertical;
+}
+
+.ds-select {
+  appearance: none;
+  padding-right: var(--ds-space-7);
+  /* A chevron drawn in CSS: the system ships no icon set, and an inline SVG
+   * data-URI cannot pick up the theme's ink colour. */
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.ds-input--sm,
+.ds-select--sm {
+  height: var(--ds-control-height-sm);
+  font-size: var(--ds-text-sm);
+}
+
+/* -- Search — an input that states what it is ----------------------------- */
+.ds-search {
+  position: relative;
+  display: inline-flex;
+  min-width: 240px;
+  flex: var(--ds-search-grow, 0 1 auto);
+}
+
+.ds-search .ds-input {
+  padding-left: var(--ds-space-7);
+}
+
+.ds-search__glyph {
+  position: absolute;
+  left: var(--ds-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-md);
+  pointer-events: none;
+}
+
+/* -- Checkbox ------------------------------------------------------------- */
+.ds-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-md);
+  color: var(--ds-color-text);
+  cursor: pointer;
+}
+
+.ds-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--ds-color-accent);
+  cursor: pointer;
+}
+
+.ds-check--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* -- Slider — the dials on a mock control panel --------------------------- */
+.ds-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+}
+
+.ds-slider__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+}
+
+.ds-slider__value {
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--ds-color-accent);
+  cursor: pointer;
+}
+
+/* -- Fieldset / form rows ------------------------------------------------- */
+.ds-form-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ds-form-cols, 2), minmax(0, 1fr));
+  gap: var(--ds-space-4) var(--ds-space-5);
+}
+
+@media (max-width: 720px) {
+  .ds-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ds-form-grid__full {
+  grid-column: 1 / -1;
+}
+
+.ds-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-5);
+}

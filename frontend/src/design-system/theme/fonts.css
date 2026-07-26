@@ -1,0 +1,55 @@
+/* ============================================================================
+ * The two faces the glass direction is set in, vendored as woff2.
+ *
+ * They are committed, not fetched. `docker compose up` must work on a laptop with
+ * no internet (CLAUDE.md §9), and a Google Fonts <link> would fail there silently —
+ * the page would still render, in Georgia and Helvetica, and nobody would notice
+ * the design had quietly degraded.
+ *
+ * Latin subsets only: 53.6 KB for all five files. Four Poppins weights (300 carries
+ * the large figures, 400 body, 500 controls, 600 anchors) and one Cormorant
+ * Garamond 600 for titles.
+ *
+ * `font-display: swap` so text is readable while the face loads — with the files
+ * served from the same origin that window is a few milliseconds.
+ * ==========================================================================*/
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('../assets/fonts/poppins-300.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/poppins-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/poppins-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/poppins-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond-600.woff2') format('woff2');
+}
