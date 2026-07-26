@@ -9,17 +9,26 @@ spring:
     username: ${DB_USERNAME:appuser}
     password: ${DB_PASSWORD:apppass}
     hikari:
-      # ELEVEN SERVICES SHARE ONE DATABASE. HikariCP's default pool is 10 connections, and
-      # eleven of those is 110 — more than the ~85 a db.t4g.micro allows
-      # (max_connections = DBInstanceClassMemory/12582880 ≈ 85 on 1 GiB). The eleventh service
-      # to start then dies in Liquibase with "Too many connections", which reads as a broken
-      # module and is really a shared budget nobody was counting.
+      # ELEVEN SERVICES SHARE ONE DATABASE, AND ITS CEILING IS 60 CONNECTIONS.
       #
-      # 5 × 11 = 55, leaving headroom for the db-init task, the schema-reset workflow and a
-      # Workbench session. A module decides one application at a time off a small pool; if
-      # yours genuinely needs more, raise DB_POOL_SIZE for YOUR service and tell the
-      # instructor, because the budget is shared.
-      maximum-pool-size: ${DB_POOL_SIZE:5}
+      # Measured on the live RDS, not estimated: `SHOW VARIABLES LIKE 'max_connections'` on
+      # the db.t4g.micro this platform runs = 60 (it derives from instance memory, and the
+      # account's free plan blocks a bigger instance — see infra/env/platform-*.params).
+      #
+      # HikariCP's default pool is 10. Eleven of those is 110, and what happens at 60 is not
+      # a queue: a service dies in Liquibase with "Too many connections", which reads as a
+      # broken module rather than an exhausted shared budget. Worse, once it is saturated the
+      # db-init task cannot connect to CREATE a schema either, so the failure spreads into
+      # deploys.
+      #
+      # The budget: 10 modules × 3 + orchestrator 5 = 35, leaving ~25 for the db-init task
+      # that runs on every deploy, the schema-reset workflow, and whoever has Workbench open.
+      # Three is ample — a module holds a connection only for the row it writes, and its
+      # call to the orchestrator happens OUTSIDE that transaction on purpose.
+      #
+      # Raising DB_POOL_SIZE takes from everyone else's share. Do the arithmetic in
+      # infra/README.md § Connection budget first, and tell the instructor.
+      maximum-pool-size: ${DB_POOL_SIZE:3}
       minimum-idle: 1
 
   jpa:
