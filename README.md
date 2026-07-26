@@ -67,6 +67,26 @@ every UI shares one port and is told apart by its path. Vite bakes asset URLs at
 a load balancer cannot rewrite paths, so the prefix has to be a build argument — the pipeline
 reads it from `infra/env/dev.params`'s `PathPrefix` so the image and the stack cannot drift.
 
+### Where your module ends up
+
+| | Your module | Your API | The board |
+|---|---|---|---|
+| **dev** | [`/neo-03/`](http://neobank-dev-571740187.ap-southeast-1.elb.amazonaws.com/neo-03/) | [`/neo-03/health`](http://neobank-dev-571740187.ap-southeast-1.elb.amazonaws.com/neo-03/health) · [`/neo-03/info`](http://neobank-dev-571740187.ap-southeast-1.elb.amazonaws.com/neo-03/info) | [orchestrator](http://neobank-dev-571740187.ap-southeast-1.elb.amazonaws.com/) |
+| **prod** | [`/neo-03/`](http://neobank-prod-294820685.ap-southeast-1.elb.amazonaws.com/neo-03/) | [`/neo-03/health`](http://neobank-prod-294820685.ap-southeast-1.elb.amazonaws.com/neo-03/health) · [`/neo-03/info`](http://neobank-prod-294820685.ap-southeast-1.elb.amazonaws.com/neo-03/info) | [orchestrator](http://neobank-prod-294820685.ap-southeast-1.elb.amazonaws.com/) |
+
+**dev is yours** — it moves every time you merge to `main`, so that link is the honest answer
+to "is my module working?". **prod is not**: it only ever runs an image dev has already
+proven, and only after a human approves the promote. A 404 on prod means your module has not
+been promoted yet — not that it is broken.
+
+`/info` is the quickest check that a deploy actually landed: it reports the `serviceId`,
+domain, team and mocked-dependency register **this running container** believes in. If that
+does not match what you configured, the deploy did not go where you think it did.
+
+Plain HTTP, no DNS name: those hostnames belong to the load balancers and change if one is
+ever replaced. The live values are always in SSM
+(`/neobank/dev/alb-dns`, `/neobank/prod/alb-dns`), and the instructor can read them out.
+
 ## If you break your database
 
 Liquibase owns the schema (`ddl-auto: validate`), and there are a few ways to get stuck. **Read
