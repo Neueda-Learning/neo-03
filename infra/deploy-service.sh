@@ -52,15 +52,27 @@ deploy() {  # $1 = desired count
       DesiredCount="$1"
 }
 
+# Park a BRAND-NEW stack at zero tasks first: a task that starts before its schema exists
+# crash-loops, and CloudFormation then waits on it for a very long time.
 if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >/dev/null 2>&1; then
   echo "==> updating $STACK"
-  deploy 1
 else
   echo "==> first deploy of $STACK: park(0) -> schema -> scale(1)"
   deploy 0
-  bash "$HERE/db-init-schema.sh" "$ENV"
-  deploy 1
 fi
+
+# ALWAYS, not just on a first deploy. This used to sit in the `else` branch, keyed on whether
+# the STACK existed — which silently assumed "stack exists" implies "schema exists". It does
+# not: if the stack is created and db-init then fails (it did, for three modules at once, when
+# eleven services exhausted the RDS connection limit), every later deploy takes the "updating"
+# path, never creates the schema, and the task crash-loops on `Unknown database` forever. The
+# only way out was deleting the stack by hand.
+#
+# The script is idempotent — CREATE DATABASE IF NOT EXISTS plus a GRANT — so running it every
+# time costs one short ECS task and removes a state the pipeline could not recover from.
+bash "$HERE/db-init-schema.sh" "$ENV"
+
+deploy 1
 
 echo "==> $STACK deployed"
 aws cloudformation describe-stacks --stack-name "$STACK" \
