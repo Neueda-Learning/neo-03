@@ -16,3 +16,6 @@ frontend/dist/
 
 # Local env overrides
 .env
+
+
+docs/
