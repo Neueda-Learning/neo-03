@@ -2,7 +2,7 @@
 
 **Module 01 of ten.** One step of the neo-bank customer-onboarding journey, owned by
 **Team 03**. The journey is driven by
-[`neo-00`](https://github.com/gjavolce/neo-00), the orchestrator — which also owns the AWS
+[`neo-00`](https://github.com/Neueda-Learning/neo-00), the orchestrator — which also owns the AWS
 environment this repo deploys itself into. You never call another module, and no module
 calls you: only the orchestrator does.
 
@@ -166,18 +166,18 @@ curl -sX POST localhost:9000/api/v1/dispatch \
 curl -s  localhost:9000/api/v1/dispatches | jq '.[0]'
 ```
 
-The sidecar lives in **its own repo** ([`gjavolce/neobank-sidecar`](https://github.com/gjavolce/neobank-sidecar))
+The sidecar lives in **its own repo** ([`Neueda-Learning/neobank-sidecar`](https://github.com/Neueda-Learning/neobank-sidecar))
 and compose builds it straight from there — there is no sidecar source in this repo and nothing
 for you to maintain. **The first build takes a few minutes**; after that it is cached.
 `docker compose up --build sidecar` picks up a new version. Its full guide, the corpus table and
-the planted failure triggers are in [its README](https://github.com/gjavolce/neobank-sidecar#readme).
+the planted failure triggers are in [its README](https://github.com/Neueda-Learning/neobank-sidecar#readme).
 
 `./scripts/reset-db.sh` empties **this module's** tables for a clean board; the sidecar's own log
 is cleared from its page.
 
 ## The contract
 
-Full detail in [`api-contract.md`](https://github.com/gjavolce/neo-00/blob/main/api-contract.md).
+Full detail in [`api-contract.md`](https://github.com/Neueda-Learning/neo-00/blob/main/api-contract.md).
 In short:
 
 **Two endpoints, and only the first is the contract.**

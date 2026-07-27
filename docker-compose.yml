@@ -71,7 +71,7 @@ services:
   # Do not replace this with a local path or a vendored copy. One repo, one copy — that is what
   # stops ten teams ending up with ten different mock orchestrators.
   sidecar:
-    build: https://github.com/gjavolce/neobank-sidecar.git#${SIDECAR_REF:-v1}
+    build: https://github.com/Neueda-Learning/neobank-sidecar.git#${SIDECAR_REF:-v1}
     environment:
       DB_URL: jdbc:mysql://mysql:3306/sidecar_db
       DB_USERNAME: ${DB_USERNAME:-appuser}
