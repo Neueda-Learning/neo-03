@@ -41,6 +41,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Images live under the ORG namespace, lower-cased: ghcr.io/neueda-learning/<repo>-*.
+  # ghcr.io rejects uppercase repository paths and the org's display name has capitals,
+  # so the base is folded once in the `img` step below rather than written out here.
   REGISTRY: ghcr.io
 
 jobs:
