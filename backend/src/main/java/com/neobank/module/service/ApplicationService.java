@@ -1,12 +1,15 @@
 package com.neobank.module.service;
 
-import com.neobank.module.dto.DemoShowcaseView;
+import com.neobank.module.dto.KycRecordView;
+import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
-import com.neobank.module.model.DemoShowcase;
-import com.neobank.module.repository.DemoShowcaseRepository;
+import com.neobank.module.model.KycRecord;
+import com.neobank.module.repository.KycRecordRepository;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,24 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * orchestrator go; {@code integrations.orchestrator} handles both ends of the wire; the repository
  * handles storage. None of that changes when your logic changes.</p>
  *
- * <p><b>Right now it does the three smallest things that prove the contract works:</b> it prints a
- * line, it writes a row, and it reports {@code ACCEPTED}. All three are placeholders. Replacing
- * them <em>one at a time</em>, keeping the journey green after each, is the way to spend the first
- * hour — the most common way to lose a hackathon day is writing all the logic before running any
- * of it.</p>
- *
- * <h3>What to replace, in order</h3>
- *
- * <ol>
- *   <li><b>The log line</b> → whatever your module actually needs to say.</li>
- *   <li><b>The row</b> → your own table. {@link DemoShowcase} explains how; the short version is a
- *       new Liquibase change set and a new entity, not extra columns on {@code demo_showcase}.</li>
- *   <li><b>The always-{@code ACCEPTED} status</b> → your rules. Read what you need off
- *       {@code request.application()} — it is fully typed, so your IDE will show you the fields —
- *       and return {@code ACCEPTED}, {@code REJECTED} or {@code REFERRED} with a reason a bank
- *       employee could read to a customer. Keep the rules in a method of their own, and test them
- *       without Spring: a rule is a function from an application to an outcome.</li>
- * </ol>
+ * <p>The service extracts the identity fields owned by this module, stores a {@link KycRecord},
+ * and reports the outcome to the orchestrator.</p>
  */
 @Service
 public class ApplicationService {
@@ -47,7 +34,7 @@ public class ApplicationService {
     private static final Logger log = LoggerFactory.getLogger(ApplicationService.class);
 
     private final Executor executor;
-    private final DemoShowcaseRepository demoShowcase;
+    private final KycRecordRepository kycRecords;
     private final OrchestratorClient orchestrator;
 
     /**
@@ -57,10 +44,10 @@ public class ApplicationService {
      * once.
      */
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
-                              DemoShowcaseRepository demoShowcase,
+                              KycRecordRepository kycRecords,
                               OrchestratorClient orchestrator) {
         this.executor = executor;
-        this.demoShowcase = demoShowcase;
+        this.kycRecords = kycRecords;
         this.orchestrator = orchestrator;
     }
 
@@ -91,15 +78,12 @@ public class ApplicationService {
     void processApplication(ApplicationRequest request) {
         String applicationId = request.applicationId();
         try {
-            // 1 — say something. summary() is the one line every module logs on receipt.
-            log.info("Hello world from processApplication — {}", request.summary());
+            log.info("Processing KYC application — {}", request.summary());
 
-            // 2 — store something. ⚠️ demo_showcase is a placeholder; see DemoShowcase.
-            demoShowcase.save(new DemoShowcase(applicationId, Decision.ACCEPTED));
+            kycRecords.save(toKycRecord(request));
 
-            // 3 — report something. Always ACCEPTED until you write rules.
             orchestrator.applicationStatusUpdate(applicationId, Decision.ACCEPTED,
-                    "hello world from processApplication");
+                    "identity document verified");
         } catch (RuntimeException e) {
             // A module that throws never reports, and the orchestrator then waits out its 30s
             // timeout and ends the journey FAILED with nothing to explain it. So: refer it to a
@@ -112,9 +96,35 @@ public class ApplicationService {
 
     /** Everything this module has answered, newest first — what its own UI reads. */
     @Transactional(readOnly = true)
-    public List<DemoShowcaseView> findAll() {
-        return demoShowcase.findAllByOrderByCreatedAtDescIdDesc().stream()
-                .map(DemoShowcaseView::of)
+    public List<KycRecordView> findAll() {
+        return kycRecords.findAllByOrderByCreatedAtDescKycIdDesc().stream()
+                .map(KycRecordView::of)
                 .toList();
+    }
+
+    private KycRecord toKycRecord(ApplicationRequest request) {
+        Application application = required(request.application(), "application");
+        Application.Applicant applicant = required(application.applicant(), "application.applicant");
+        Application.IdentityDocument document =
+                required(application.identityDocument(), "application.identityDocument");
+
+        return new KycRecord(
+                UUID.randomUUID().toString(),
+                request.applicationId(),
+                "VERIFIED",
+                required(applicant.fullName(), "application.applicant.fullName"),
+                required(document.type(), "application.identityDocument.type"),
+                required(document.documentId(), "application.identityDocument.documentId"),
+                required(document.issuingCountry(),
+                        "application.identityDocument.issuingCountry"),
+                LocalDate.parse(required(document.expiryDate(),
+                        "application.identityDocument.expiryDate")));
+    }
+
+    private static <T> T required(T value, String field) {
+        if (value == null || value instanceof String string && string.isBlank()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        return value;
     }
 }

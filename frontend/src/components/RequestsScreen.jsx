@@ -44,12 +44,19 @@ export default function RequestsScreen({ requests, error, info }) {
     return requests.filter((r) => {
       if (filter !== 'All' && r.status !== filter) return false;
       if (!needle) return true;
-      return r.applicationId.toLowerCase().includes(needle);
+      return [r.applicationId, r.name, r.documentId]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(needle));
     });
   }, [requests, query, filter]);
 
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
+    { key: 'name', header: 'Applicant' },
+    { key: 'type', header: 'Document type' },
+    { key: 'documentId', header: 'Document ID', mono: true },
+    { key: 'issuingCountry', header: 'Country', tight: true },
+    { key: 'expiryDate', header: 'Expiry date' },
     {
       key: 'status',
       header: 'Status',
@@ -82,13 +89,13 @@ export default function RequestsScreen({ requests, error, info }) {
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
         <MetricTile label="Seen" value={requests.length} />
-        <MetricTile label="Accepted" value={counts.ACCEPTED ?? 0} tone="positive" />
+        <MetricTile label="Verified" value={counts.VERIFIED ?? 0} tone="positive" />
       </Grid>
 
       <Toolbar>
         <SearchInput
           grow
-          placeholder="Application id"
+          placeholder="Application id, applicant, or document id"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search applications"

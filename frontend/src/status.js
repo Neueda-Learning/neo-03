@@ -7,6 +7,9 @@
 import { TONES, toneMapper } from './design-system';
 
 export const statusTone = toneMapper({
+  VERIFIED: TONES.POSITIVE,
+  FAILED: TONES.NEGATIVE,
+  REVIEW: TONES.WARNING,
   ACCEPTED: TONES.POSITIVE,
   REJECTED: TONES.NEGATIVE,
   REFERRED: TONES.WARNING,
@@ -21,7 +24,7 @@ export const statusTone = toneMapper({
  * `in-progress` is not here on purpose: the placeholder writes its row after the work, so no row
  * is ever in that state and a chip for it would always read zero. Add it if you change that.
  */
-export const STATUSES = ['ACCEPTED', 'REJECTED', 'REFERRED'];
+export const STATUSES = ['VERIFIED', 'FAILED', 'REVIEW'];
 
 export function time(iso) {
   return iso ? new Date(iso).toLocaleTimeString() : '—';

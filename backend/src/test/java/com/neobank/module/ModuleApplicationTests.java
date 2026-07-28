@@ -59,7 +59,13 @@ class ModuleApplicationTests {
                 "applicationId": "%s",
                 "channel": "MOBILE_APP",
                 "submittedAt": "2026-07-25T09:14:00Z",
-                "applicant": {"fullName": "Maria Nowak", "dateOfBirth": "1996-04-11"},
+                "applicant": {"fullName": "Jonas Meyer", "dateOfBirth": "1979-02-14"},
+                "identityDocument": {
+                  "type": "DRIVING_LICENCE",
+                  "documentId": "MEYER701794JM9AB",
+                  "issuingCountry": "GB",
+                  "expiryDate": "2029-08-31"
+                },
                 "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 3000}
               }
             }
@@ -115,7 +121,11 @@ class ModuleApplicationTests {
         mvc.perform(get("/api/v1/applications"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].status")
-                        .value(org.hamcrest.Matchers.hasItem("ACCEPTED")))
+                        .value(org.hamcrest.Matchers.hasItem("VERIFIED")))
+                .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].name")
+                        .value(org.hamcrest.Matchers.hasItem("Jonas Meyer")))
+                .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].documentId")
+                        .value(org.hamcrest.Matchers.hasItem("MEYER701794JM9AB")))
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].createdAt")
                         .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.notNullValue())));
     }
