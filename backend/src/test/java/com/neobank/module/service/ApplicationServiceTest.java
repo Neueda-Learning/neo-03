@@ -15,7 +15,10 @@ import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
 import com.neobank.module.repository.KycRecordRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,17 +40,22 @@ class ApplicationServiceTest {
     void setUp() {
         kycRecords = mock(KycRecordRepository.class);
         orchestrator = mock(OrchestratorClient.class);
-        service = new ApplicationService(Runnable::run, kycRecords, orchestrator);
+        Clock clock = Clock.fixed(Instant.parse("2026-07-28T00:00:00Z"), ZoneOffset.UTC);
+        service = new ApplicationService(Runnable::run, kycRecords, orchestrator, clock);
         when(kycRecords.save(any(KycRecord.class))).thenAnswer(call -> call.getArgument(0));
     }
 
     private static ApplicationRequest request(String id) {
+        return request(id, "2029-08-31");
+    }
+
+    private static ApplicationRequest request(String id, String expiryDate) {
         Application application = new Application(
                 id, "MOBILE_APP", "2026-07-25T09:14:00Z",
                 new Application.Applicant("Jonas Meyer", "1979-02-14", null, null, null, null,
                         null, null, null, null, null),
                 new Application.IdentityDocument(
-                        "DRIVING_LICENCE", "MEYER701794JM9AB", "GB", "2029-08-31"),
+                        "DRIVING_LICENCE", "MEYER701794JM9AB", "GB", expiryDate),
                 null, null,
                 new Application.Product("CREDIT_CARD_STANDARD", 2500),
                 null, null);
@@ -79,6 +87,32 @@ class ApplicationServiceTest {
 
         verify(kycRecords).save(any(KycRecord.class));
         verify(orchestrator).applicationStatusUpdate(eq("SIM-02"), eq(Decision.ACCEPTED), any());
+    }
+
+    @Test
+    void rejectsADocumentThatExpiresInLessThanSixMonths() {
+        service.processApplication(request("SIM-04", "2027-01-27"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+
+        verify(orchestrator).applicationStatusUpdate(
+                "SIM-04",
+                Decision.REJECTED,
+                "identity document expires in less than 6 months");
+    }
+
+    @Test
+    void acceptsADocumentThatExpiresInExactlySixMonths() {
+        service.processApplication(request("SIM-05", "2027-01-28"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+
+        verify(orchestrator).applicationStatusUpdate(
+                "SIM-05", Decision.ACCEPTED, "identity document verified");
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
 import com.neobank.module.repository.KycRecordRepository;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class ApplicationService {
     private final Executor executor;
     private final KycRecordRepository kycRecords;
     private final OrchestratorClient orchestrator;
+    private final Clock clock;
 
     /**
      * {@code applicationTaskExecutor} is the thread pool Spring Boot configures for you. Tune it in
@@ -45,10 +47,12 @@ public class ApplicationService {
      */
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
                               KycRecordRepository kycRecords,
-                              OrchestratorClient orchestrator) {
+                              OrchestratorClient orchestrator,
+                              Clock clock) {
         this.executor = executor;
         this.kycRecords = kycRecords;
         this.orchestrator = orchestrator;
+        this.clock = clock;
     }
 
     /**
@@ -80,10 +84,11 @@ public class ApplicationService {
         try {
             log.info("Processing KYC application — {}", request.summary());
 
-            kycRecords.save(toKycRecord(request));
+            KycAssessment assessment = assess(request);
+            kycRecords.save(assessment.record());
 
-            orchestrator.applicationStatusUpdate(applicationId, Decision.ACCEPTED,
-                    "identity document verified");
+            orchestrator.applicationStatusUpdate(
+                    applicationId, assessment.decision(), assessment.comment());
         } catch (RuntimeException e) {
             // A module that throws never reports, and the orchestrator then waits out its 30s
             // timeout and ends the journey FAILED with nothing to explain it. So: refer it to a
@@ -102,23 +107,31 @@ public class ApplicationService {
                 .toList();
     }
 
-    private KycRecord toKycRecord(ApplicationRequest request) {
+    private KycAssessment assess(ApplicationRequest request) {
         Application application = required(request.application(), "application");
         Application.Applicant applicant = required(application.applicant(), "application.applicant");
         Application.IdentityDocument document =
                 required(application.identityDocument(), "application.identityDocument");
+        LocalDate expiryDate = LocalDate.parse(required(
+                document.expiryDate(), "application.identityDocument.expiryDate"));
+        boolean expiresTooSoon = expiryDate.isBefore(LocalDate.now(clock).plusMonths(6));
+        String status = expiresTooSoon ? "FAILED" : "VERIFIED";
+        Decision decision = expiresTooSoon ? Decision.REJECTED : Decision.ACCEPTED;
+        String comment = expiresTooSoon
+                ? "identity document expires in less than 6 months"
+                : "identity document verified";
 
-        return new KycRecord(
+        KycRecord record = new KycRecord(
                 UUID.randomUUID().toString(),
                 request.applicationId(),
-                "VERIFIED",
+                status,
                 required(applicant.fullName(), "application.applicant.fullName"),
                 required(document.type(), "application.identityDocument.type"),
                 required(document.documentId(), "application.identityDocument.documentId"),
                 required(document.issuingCountry(),
                         "application.identityDocument.issuingCountry"),
-                LocalDate.parse(required(document.expiryDate(),
-                        "application.identityDocument.expiryDate")));
+                expiryDate);
+        return new KycAssessment(record, decision, comment);
     }
 
     private static <T> T required(T value, String field) {
@@ -126,5 +139,8 @@ public class ApplicationService {
             throw new IllegalArgumentException(field + " is required");
         }
         return value;
+    }
+
+    private record KycAssessment(KycRecord record, Decision decision, String comment) {
     }
 }
