@@ -22,7 +22,7 @@ public class KycRecord {
     @Column(nullable = false, length = 32)
     private String status;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String name;
 
     @Column(nullable = false, length = 64)
@@ -41,11 +41,16 @@ public class KycRecord {
     private Instant createdAt;
 
     protected KycRecord() {
-        // JPA
     }
 
-    public KycRecord(String kycId, String applicationId, String status, String name, String type,
-                     String documentId, String issuingCountry, LocalDate expiryDate) {
+    public KycRecord(String kycId,
+                     String applicationId,
+                     String status,
+                     String name,
+                     String type,
+                     String documentId,
+                     String issuingCountry,
+                     LocalDate expiryDate) {
         this.kycId = kycId;
         this.applicationId = applicationId;
         this.status = status;
