@@ -64,7 +64,7 @@ class ModuleApplicationTests {
                   "type": "DRIVING_LICENCE",
                   "documentId": "MEYER701794JM9AB",
                   "issuingCountry": "GB",
-                  "expiryDate": "2029-08-31"
+                  "expiryDate": "2099-08-31"
                 },
                 "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 3000}
               }
