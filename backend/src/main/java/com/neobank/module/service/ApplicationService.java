@@ -137,22 +137,16 @@ public class ApplicationService {
         return new KycAssessment(record, decision, comment);
     }
 
-    private PassportVerificationResult PassportVerification() {
-        Integer confidence = ThirdPartyPassport();
-        if (confidence == null) {
-            return new PassportVerificationResult(null, "REVIEW");
+    private Integer PassportVerification() {
+        boolean networkConnected = random.nextInt(4) < 3;
+        if (!networkConnected) {
+            return -1;
         }
 
-        String result = confidence >= 92 ? "ACCEPT" : confidence <= 60 ? "REJECT" : "REVIEW";
-        return new PassportVerificationResult(confidence, result);
+        return ThirdPartyPassport();
     }
 
     private Integer ThirdPartyPassport() {
-        boolean networkConnected = random.nextInt(4) < 3;
-        if (!networkConnected) {
-            return null;
-        }
-
         return switch (random.nextInt(3)) {
             case 0 -> random.nextInt(61);
             case 1 -> 61 + random.nextInt(31);
@@ -165,9 +159,6 @@ public class ApplicationService {
             throw new IllegalArgumentException(field + " is required");
         }
         return value;
-    }
-
-    private record PassportVerificationResult(Integer confidence, String result) {
     }
 
     private record KycAssessment(KycRecord record, Decision decision, String comment) {
