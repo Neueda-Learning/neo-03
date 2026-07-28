@@ -1,0 +1,143 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-kyc-review-tables
+      author: neo-03
+      changes:
+        - createTable:
+            tableName: kyc_record
+            columns:
+              - column:
+                  name: kyc_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: document_id
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: issuing_country
+                  type: VARCHAR(2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expiry_date
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: kyc_record
+            indexName: idx_kyc_record_application
+            columns:
+              - column:
+                  name: application_id
+
+        - createTable:
+            tableName: review_fail
+            columns:
+              - column:
+                  name: review_fail_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: kyc_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+              - column:
+                  name: review_result
+                  type: VARCHAR(32)
+              - column:
+                  name: comment
+                  type: VARCHAR(1000)
+        - addForeignKeyConstraint:
+            baseTableName: review_fail
+            baseColumnNames: kyc_id
+            constraintName: fk_review_fail_kyc_record
+            referencedTableName: kyc_record
+            referencedColumnNames: kyc_id
+
+        - createTable:
+            tableName: review_score
+            columns:
+              - column:
+                  name: review_score_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: kyc_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+              - column:
+                  name: confidence
+                  type: INT
+              - column:
+                  name: review_result
+                  type: VARCHAR(32)
+              - column:
+                  name: comment
+                  type: VARCHAR(1000)
+        - addForeignKeyConstraint:
+            baseTableName: review_score
+            baseColumnNames: kyc_id
+            constraintName: fk_review_score_kyc_record
+            referencedTableName: kyc_record
+            referencedColumnNames: kyc_id
+      rollback:
+        - dropTable:
+            tableName: review_score
+        - dropTable:
+            tableName: review_fail
+        - dropTable:
+            tableName: kyc_record
