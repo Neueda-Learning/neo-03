@@ -10,6 +10,7 @@ import com.neobank.module.repository.KycRecordRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
@@ -38,6 +39,7 @@ public class ApplicationService {
     private final KycRecordRepository kycRecords;
     private final OrchestratorClient orchestrator;
     private final Clock clock;
+    private final Random random = new Random();
 
     /**
      * {@code applicationTaskExecutor} is the thread pool Spring Boot configures for you. Tune it in
@@ -83,6 +85,7 @@ public class ApplicationService {
         String applicationId = request.applicationId();
         try {
             log.info("Processing KYC application — {}", request.summary());
+            log.info("Random passport confidence test output — {}", PassportVerification());
 
             KycAssessment assessment = assess(request);
             kycRecords.save(assessment.record());
@@ -134,11 +137,30 @@ public class ApplicationService {
         return new KycAssessment(record, decision, comment);
     }
 
+    private RandomPassportConfidence PassportVerification() {
+        boolean networkConnected = random.nextInt(4) < 3;
+        if (!networkConnected) {
+            return new RandomPassportConfidence(false, null, "NETWORK_DISCONNECTED");
+        }
+
+        int confidence = switch (random.nextInt(3)) {
+            case 0 -> random.nextInt(61);
+            case 1 -> 61 + random.nextInt(31);
+            default -> 92 + random.nextInt(9);
+        };
+        String result = confidence >= 92 ? "ACCEPT" : confidence <= 60 ? "REJECT" : "REVIEW";
+        return new RandomPassportConfidence(true, confidence, result);
+    }
+
     private static <T> T required(T value, String field) {
         if (value == null || value instanceof String string && string.isBlank()) {
             throw new IllegalArgumentException(field + " is required");
         }
         return value;
+    }
+
+    private record RandomPassportConfidence(boolean networkConnected, Integer confidence,
+                                            String result) {
     }
 
     private record KycAssessment(KycRecord record, Decision decision, String comment) {
