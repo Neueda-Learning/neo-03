@@ -8,7 +8,6 @@ import {
   EmptyState,
   Grid,
   MetricTile,
-  PageHeader,
   SearchInput,
   Toolbar,
 } from '../design-system';
@@ -106,19 +105,6 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
 
   return (
     <>
-      <PageHeader
-        title="Applications"
-        lede="everything the orchestrator has sent this module, and what it answered · newest first"
-        meta={
-          info
-            ? `${info.serviceId} · ${info.domain} · v${info.version}` +
-              (info.mockedDependencies?.length
-                ? ` · mocking ${info.mockedDependencies.join(', ')}`
-                : ' · nothing mocked')
-            : undefined
-        }
-      />
-
       {error && (
         <Alert tone="negative" title="Could not load applications">
           {error} — the backend may still be starting. The list retries every two seconds.
@@ -148,7 +134,8 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
         maxRows={null}
         total={matches.length}
         rowKey={(r) => r.kycId ?? r.applicationId}
-        footnote={`newest first · page ${page} of ${totalPages}`}
+        footnote={`page ${page} of ${totalPages}`}
+        footnoteOnly
         empty={
           <EmptyState
             title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}
