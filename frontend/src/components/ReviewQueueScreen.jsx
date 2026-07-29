@@ -9,6 +9,7 @@ import {
   PageHeader,
   Textarea,
 } from '../design-system';
+import { api } from '../api.js';
 
 function queueAge(createdAt) {
   const elapsedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
@@ -28,6 +29,9 @@ function workings(item) {
 export default function ReviewQueueScreen({ queue, applications, error }) {
   const [selectedId, setSelectedId] = useState(null);
   const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null);
 
   const applicantNames = useMemo(
     () => new Map(applications.map((application) => [application.applicationId, application.name])),
@@ -42,6 +46,31 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
   }, [queue, selectedId]);
 
   const selected = queue.find((item) => item.kycId === selectedId) ?? null;
+  const canSubmit = reason.trim().length > 0 && !submitting;
+
+  async function submit(decision) {
+    if (!selected || !canSubmit) return;
+
+    setSubmitting(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await api.recordReviewDecision(selected.kycId, {
+        source: selected.source,
+        decision,
+        comment: reason.trim(),
+      });
+      setReason('');
+      setActionMessage(
+        `Case ${selected.applicationId} was ${decision === 'ACCEPTED' ? 'approved' : 'declined'}.`
+      );
+    } catch (e) {
+      setActionError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const columns = [
     { key: 'applicationId', header: 'Reference', mono: true },
     {
@@ -67,6 +96,16 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
           {error} - the queue retries every two seconds.
         </Alert>
       )}
+      {actionError && (
+        <Alert tone="negative" title="Could not submit decision">
+          {actionError}
+        </Alert>
+      )}
+      {actionMessage && (
+        <Alert tone="positive" title="Decision recorded">
+          {actionMessage}
+        </Alert>
+      )}
 
       <div className="review-queue-layout">
         <section aria-label="Review queue">
@@ -79,6 +118,8 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
             onRowClick={(item) => {
               setSelectedId(item.kycId);
               setReason('');
+              setActionError(null);
+              setActionMessage(null);
             }}
             footnote="oldest first"
             empty={
@@ -116,7 +157,7 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
                 </div>
               </dl>
 
-              <Field label="Reason" required hint="Required when manual override is available.">
+              <Field label="Reason" required hint="Explain the analyst decision for the case record.">
                 {({ id, describedBy }) => (
                   <Textarea
                     id={id}
@@ -129,10 +170,21 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
               </Field>
 
               <div className="review-case__actions">
-                <Button disabled title="Manual override is not available yet">
+                <Button
+                  disabled={!canSubmit}
+                  busy={submitting}
+                  busyLabel="Submitting..."
+                  onClick={() => submit('ACCEPTED')}
+                >
                   Approve
                 </Button>
-                <Button variant="danger" disabled title="Manual override is not available yet">
+                <Button
+                  variant="danger"
+                  disabled={!canSubmit}
+                  busy={submitting}
+                  busyLabel="Submitting..."
+                  onClick={() => submit('REJECTED')}
+                >
                   Decline
                 </Button>
               </div>

@@ -2,6 +2,7 @@ package com.neobank.module.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(ReviewQueueController.class)
@@ -44,5 +46,23 @@ class ReviewQueueControllerTest {
                 .andExpect(jsonPath("$[0].reviewResult").value("REVIEW"))
                 .andExpect(jsonPath("$[0].confidence").value(74))
                 .andExpect(jsonPath("$[0].comment").value("low confidence"));
+    }
+
+    @Test
+    void recordsAnAnalystDecisionForTheSelectedQueueEntry() throws Exception {
+        mvc.perform(post("/api/v1/review-queue/KYC-1/decision")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"source":"SCORE","decision":"ACCEPTED",
+                                 "comment":"Document checked by analyst"}
+                                """))
+                .andExpect(status().isNoContent());
+
+        org.mockito.Mockito.verify(applications).recordManualReviewDecision(
+                org.mockito.ArgumentMatchers.eq("KYC-1"),
+                org.mockito.ArgumentMatchers.argThat(request ->
+                        request.source().equals("SCORE")
+                                && request.decision().equals("ACCEPTED")
+                                && request.comment().equals("Document checked by analyst")));
     }
 }

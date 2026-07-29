@@ -36,5 +36,9 @@ export const api = {
   info: () => request('/info'),
   listApplications: () => request('/api/v1/applications'),
   listReviewQueue: () => request('/api/v1/review-queue'),
+  recordReviewDecision: (kycId, decision) => request(`/api/v1/review-queue/${kycId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify(decision),
+  }),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
 };

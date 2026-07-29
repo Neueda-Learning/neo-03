@@ -73,4 +73,10 @@ public class ReviewFail {
     public String getManualReviewComment() {
         return manualReviewComment;
     }
+
+    public void recordManualDecision(String reviewResult, String comment, Instant decidedAt) {
+        this.reviewResult = reviewResult;
+        this.manualReviewComment = comment;
+        this.updatedAt = decidedAt;
+    }
 }

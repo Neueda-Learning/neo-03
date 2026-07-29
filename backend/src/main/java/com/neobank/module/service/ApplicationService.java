@@ -1,6 +1,7 @@
 package com.neobank.module.service;
 
 import com.neobank.module.dto.KycRecordView;
+import com.neobank.module.dto.ManualReviewDecisionRequest;
 import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
@@ -23,6 +24,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -148,9 +150,9 @@ public class ApplicationService {
     @Transactional(readOnly = true)
     public List<ReviewQueueView> findEarliestReviewQueue() {
         List<QueueCandidate> candidates = Stream.concat(
-                        reviewFails.findTop10ByOrderByCreatedAtAscReviewFailIdAsc().stream()
+                        reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW").stream()
                                 .map(QueueCandidate::from),
-                        reviewScores.findTop10ByOrderByCreatedAtAscReviewScoreIdAsc().stream()
+                        reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW").stream()
                                 .map(QueueCandidate::from))
                 .sorted(Comparator.comparing(QueueCandidate::createdAt)
                         .thenComparing(QueueCandidate::source)
@@ -171,6 +173,35 @@ public class ApplicationService {
         return candidates.stream()
                 .map(candidate -> toReviewQueueView(candidate, recordsByKycId))
                 .toList();
+    }
+
+    /**
+     * Stores the analyst's explanation on the review row that produced the queue entry, records
+     * the final KYC status, and reports that final outcome to the orchestrator.
+     */
+    @Transactional
+    public void recordManualReviewDecision(String kycId, ManualReviewDecisionRequest request) {
+        KycRecord record = kycRecords.findById(kycId)
+                .orElseThrow(() -> new NoSuchElementException("KYC record not found: " + kycId));
+        if (!"REVIEW".equals(record.getStatus())) {
+            throw new IllegalStateException("KYC record is not awaiting review: " + kycId);
+        }
+
+        Decision decision = Decision.valueOf(request.decision());
+        String comment = request.comment().trim();
+        Instant decidedAt = Instant.now(clock);
+        switch (request.source()) {
+            case "FAIL" -> reviewFails.findFirstByKycIdAndReviewResult(kycId, "REVIEW")
+                    .orElseThrow(() -> new NoSuchElementException("Pending failed-provider review not found: " + kycId))
+                    .recordManualDecision(decision.name(), comment, decidedAt);
+            case "SCORE" -> reviewScores.findFirstByKycIdAndReviewResult(kycId, "REVIEW")
+                    .orElseThrow(() -> new NoSuchElementException("Pending low-confidence review not found: " + kycId))
+                    .recordManualDecision(decision.name(), comment, decidedAt);
+            default -> throw new IllegalArgumentException("Unknown review source: " + request.source());
+        }
+
+        record.setStatus(decision == Decision.ACCEPTED ? "VERIFIED" : "FAILED");
+        orchestrator.applicationStatusUpdate(record.getApplicationId(), decision, comment);
     }
 
     private ReviewQueueView toReviewQueueView(QueueCandidate candidate,
