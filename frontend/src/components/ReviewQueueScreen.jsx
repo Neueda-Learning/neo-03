@@ -28,7 +28,7 @@ function workings(item) {
   return [item.source, confidence, item.comment].filter(Boolean).join(' - ');
 }
 
-export default function ReviewQueueScreen({ queue, applications, error }) {
+export default function ReviewQueueScreen({ queue, applications, error, focusedKycId }) {
   const [selectedId, setSelectedId] = useState(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +47,23 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
       setReason('');
     }
   }, [queue, selectedId]);
+
+  useEffect(() => {
+    if (!focusedKycId) {
+      return;
+    }
+
+    const index = queue.findIndex((item) => item.kycId === focusedKycId);
+    if (index === -1) {
+      return;
+    }
+
+    setSelectedId(focusedKycId);
+    setPage(Math.floor(index / PAGE_SIZE) + 1);
+    setReason('');
+    setActionError(null);
+    setActionMessage(null);
+  }, [focusedKycId, queue]);
 
   const totalPages = Math.max(1, Math.ceil(queue.length / PAGE_SIZE));
 

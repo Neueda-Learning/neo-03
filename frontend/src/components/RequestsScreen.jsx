@@ -28,7 +28,7 @@ const PAGE_SIZE = 10;
  * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
  * DataTable — no screen re-implements them.
  */
-export default function RequestsScreen({ requests, error, info }) {
+export default function RequestsScreen({ requests, error, info, onOpenReviewQueue }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
@@ -68,6 +68,12 @@ export default function RequestsScreen({ requests, error, info }) {
     return matches.slice(start, start + PAGE_SIZE);
   }, [matches, page]);
 
+  function openReviewQueue(request) {
+    if (request.status === 'REVIEW') {
+      onOpenReviewQueue?.(request.kycId);
+    }
+  }
+
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
     { key: 'name', header: 'Applicant' },
@@ -79,7 +85,14 @@ export default function RequestsScreen({ requests, error, info }) {
       key: 'status',
       header: 'Status',
       tight: true,
-      render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge>,
+      render: (r) =>
+        r.status === 'REVIEW' ? (
+          <button type="button" className="app-status-link" onClick={() => openReviewQueue(r)}>
+            <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+          </button>
+        ) : (
+          <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+        ),
     },
     { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
   ];

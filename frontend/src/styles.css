@@ -38,6 +38,21 @@
   gap: var(--ds-space-3);
 }
 
+.app-status-link {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-status-link:focus-visible {
+  border-radius: var(--ds-radius-pill);
+  outline: var(--ds-border-width-strong, 2px) solid
+    var(--ds-color-accent, var(--ds-color-text));
+  outline-offset: 2px;
+}
+
 .review-queue-screen {
   display: grid;
   gap: var(--ds-space-6);

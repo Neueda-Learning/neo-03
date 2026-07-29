@@ -37,6 +37,7 @@ export default function App() {
   const [reviewQueueError, setReviewQueueError] = useState(null);
   const [health, setHealth] = useState(null);
   const [info, setInfo] = useState(null);
+  const [focusedReviewKycId, setFocusedReviewKycId] = useState(null);
 
   const reload = useCallback(async () => {
     try {
@@ -116,13 +117,22 @@ export default function App() {
       footer="One of ten modules · applications arrive from the orchestrator, never from this UI"
     >
       {screen === 'applications' && (
-        <RequestsScreen requests={requests} error={error} info={info} />
+        <RequestsScreen
+          requests={requests}
+          error={error}
+          info={info}
+          onOpenReviewQueue={(kycId) => {
+            setFocusedReviewKycId(kycId);
+            setScreen('review-queue');
+          }}
+        />
       )}
       {screen === 'review-queue' && (
         <ReviewQueueScreen
           queue={reviewQueue}
           applications={requests}
           error={reviewQueueError}
+          focusedKycId={focusedReviewKycId}
         />
       )}
     </AppShell>
