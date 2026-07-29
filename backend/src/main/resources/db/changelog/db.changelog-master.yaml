@@ -8,3 +8,5 @@ databaseChangeLog:
       file: db/changelog/changes/002-create-kyc-review-tables.yaml
   - include:
       file: db/changelog/changes/003-create-third-party-attempts.yaml
+  - include:
+      file: db/changelog/changes/004-rename-review-tables.yaml

@@ -35,5 +35,6 @@ export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
   listApplications: () => request('/api/v1/applications'),
+  listReviewQueue: () => request('/api/v1/review-queue'),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
 };

@@ -1,0 +1,38 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-rename-review-tables
+      author: neo-03
+      changes:
+        - renameTable:
+            oldTableName: review_fail
+            newTableName: review_third_party_fail
+        - renameColumn:
+            tableName: review_third_party_fail
+            oldColumnName: comment
+            newColumnName: manual_review_comment
+            columnDataType: VARCHAR(1000)
+        - renameTable:
+            oldTableName: review_score
+            newTableName: review_low_confidence
+        - renameColumn:
+            tableName: review_low_confidence
+            oldColumnName: comment
+            newColumnName: manual_review_comment
+            columnDataType: VARCHAR(1000)
+      rollback:
+        - renameColumn:
+            tableName: review_low_confidence
+            oldColumnName: manual_review_comment
+            newColumnName: comment
+            columnDataType: VARCHAR(1000)
+        - renameTable:
+            oldTableName: review_low_confidence
+            newTableName: review_score
+        - renameColumn:
+            tableName: review_third_party_fail
+            oldColumnName: manual_review_comment
+            newColumnName: comment
+            columnDataType: VARCHAR(1000)
+        - renameTable:
+            oldTableName: review_third_party_fail
+            newTableName: review_fail

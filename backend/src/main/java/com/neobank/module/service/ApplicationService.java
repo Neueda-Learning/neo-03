@@ -1,22 +1,34 @@
 package com.neobank.module.service;
 
 import com.neobank.module.dto.KycRecordView;
+import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
+import com.neobank.module.model.ReviewFail;
+import com.neobank.module.model.ReviewScore;
 import com.neobank.module.model.ThirdPartyAttempt;
 import com.neobank.module.repository.KycRecordRepository;
+import com.neobank.module.repository.ReviewFailRepository;
+import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,10 +54,13 @@ public class ApplicationService {
     private static final long INITIAL_BACKOFF_MILLIS = 100L;
     private static final int ACCEPT_CONFIDENCE_MIN = 92;
     private static final int REVIEW_CONFIDENCE_MIN = 61;
+    private static final int REVIEW_QUEUE_LIMIT = 10;
 
     private final Executor executor;
     private final KycRecordRepository kycRecords;
     private final ThirdPartyAttemptRepository thirdPartyAttempts;
+    private final ReviewFailRepository reviewFails;
+    private final ReviewScoreRepository reviewScores;
     private final OrchestratorClient orchestrator;
     private final IdVerificationClient idVerificationClient;
     private final Clock clock;
@@ -59,12 +74,16 @@ public class ApplicationService {
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
                               KycRecordRepository kycRecords,
                               ThirdPartyAttemptRepository thirdPartyAttempts,
+                              ReviewFailRepository reviewFails,
+                              ReviewScoreRepository reviewScores,
                               OrchestratorClient orchestrator,
                               IdVerificationClient idVerificationClient,
                               Clock clock) {
         this.executor = executor;
         this.kycRecords = kycRecords;
         this.thirdPartyAttempts = thirdPartyAttempts;
+        this.reviewFails = reviewFails;
+        this.reviewScores = reviewScores;
         this.orchestrator = orchestrator;
         this.idVerificationClient = idVerificationClient;
         this.clock = clock;
@@ -123,6 +142,46 @@ public class ApplicationService {
         return kycRecords.findAllByOrderByCreatedAtDescKycIdDesc().stream()
                 .map(KycRecordView::of)
                 .toList();
+    }
+
+    /** The earliest ten records across both review tables, not ten from each. */
+    @Transactional(readOnly = true)
+    public List<ReviewQueueView> findEarliestReviewQueue() {
+        List<QueueCandidate> candidates = Stream.concat(
+                        reviewFails.findTop10ByOrderByCreatedAtAscReviewFailIdAsc().stream()
+                                .map(QueueCandidate::from),
+                        reviewScores.findTop10ByOrderByCreatedAtAscReviewScoreIdAsc().stream()
+                                .map(QueueCandidate::from))
+                .sorted(Comparator.comparing(QueueCandidate::createdAt)
+                        .thenComparing(QueueCandidate::source)
+                        .thenComparing(QueueCandidate::reviewId))
+                .limit(REVIEW_QUEUE_LIMIT)
+                .toList();
+
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> kycIds = candidates.stream()
+                .map(QueueCandidate::kycId)
+                .collect(Collectors.toSet());
+        Map<String, KycRecord> recordsByKycId = kycRecords.findAllById(kycIds).stream()
+                .collect(Collectors.toMap(KycRecord::getKycId, Function.identity()));
+
+        return candidates.stream()
+                .map(candidate -> toReviewQueueView(candidate, recordsByKycId))
+                .toList();
+    }
+
+    private ReviewQueueView toReviewQueueView(QueueCandidate candidate,
+                                               Map<String, KycRecord> recordsByKycId) {
+        KycRecord record = recordsByKycId.get(candidate.kycId());
+        if (record == null) {
+            throw new IllegalStateException("Review record has no KYC record: " + candidate.kycId());
+        }
+        return new ReviewQueueView(record.getApplicationId(), candidate.kycId(), candidate.source(),
+                candidate.createdAt(), candidate.reviewResult(), candidate.confidence(),
+                candidate.comment());
     }
 
     private KycAssessment assess(ApplicationRequest request) {
@@ -304,5 +363,27 @@ public class ApplicationService {
                                  Decision decision,
                                  String comment,
                                  List<ThirdPartyAttempt> attempts) {
+    }
+
+    private record QueueCandidate(
+            String reviewId,
+            String kycId,
+            String source,
+            Instant createdAt,
+            String reviewResult,
+            Integer confidence,
+            String comment) {
+
+        private static QueueCandidate from(ReviewFail review) {
+            return new QueueCandidate(review.getReviewFailId(), review.getKycId(), "FAIL",
+                    review.getCreatedAt(), review.getReviewResult(), null,
+                    review.getManualReviewComment());
+        }
+
+        private static QueueCandidate from(ReviewScore review) {
+            return new QueueCandidate(review.getReviewScoreId(), review.getKycId(), "SCORE",
+                    review.getCreatedAt(), review.getReviewResult(), review.getConfidence(),
+                    review.getManualReviewComment());
+        }
     }
 }
