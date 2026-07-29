@@ -3,6 +3,7 @@ package com.neobank.module.service;
 import com.neobank.module.dto.KycRecordView;
 import com.neobank.module.dto.ManualReviewDecisionRequest;
 import com.neobank.module.dto.ReviewQueueView;
+import com.neobank.module.dto.ThirdPartyAttemptView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
@@ -179,6 +180,26 @@ public class ApplicationService {
                 .toList();
     }
 
+    /**
+     * Every provider call made for one case, oldest first — the evidence behind its outcome.
+     *
+     * <p><b>An unknown case is a 404; a known case with no attempts is an empty list.</b> Those are
+     * different facts and the screen shows them differently. Zero attempts is not a gap in the
+     * data: both local pre-checks decide without calling anyone, and the empty list is the proof
+     * that no provider fee was paid for an answer the document itself already gave us.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<ThirdPartyAttemptView> findAttempts(String kycId) {
+        // Look the case up first. Returning [] for an id that does not exist would tell an
+        // operator "this case made no calls" about a case that is not there at all.
+        kycRecords.findById(kycId)
+                .orElseThrow(() -> new NoSuchElementException("KYC record not found: " + kycId));
+
+        return thirdPartyAttempts.findByKycIdOrderByAttemptNumberAsc(kycId).stream()
+                .map(ThirdPartyAttemptView::of)
+                .toList();
+    }
+
     /** The earliest ten records across both review tables, not ten from each. */
     @Transactional(readOnly = true)
     public List<ReviewQueueView> findEarliestReviewQueue() {
@@ -274,6 +295,7 @@ public class ApplicationService {
             outcome = new VerificationOutcome(
                     "FAILED",
                     Decision.REJECTED,
+                    ReasonCode.KYC_DOCUMENT_INVALID,
                     comment(ReasonCode.KYC_DOCUMENT_INVALID,
                             "issuing country '" + issuingCountry + "' is not an ISO alpha-2 code"),
                     List.of(),
@@ -282,6 +304,7 @@ public class ApplicationService {
             outcome = new VerificationOutcome(
                     "FAILED",
                     Decision.REJECTED,
+                    ReasonCode.KYC_DOCUMENT_EXPIRED,
                     comment(ReasonCode.KYC_DOCUMENT_EXPIRED,
                             "identity document expires in less than 6 months (" + expiryDate + ")"),
                     List.of(),
@@ -299,7 +322,8 @@ public class ApplicationService {
                 documentType,
                 required(document.documentId(), "application.identityDocument.documentId"),
             issuingCountry,
-                expiryDate);
+                expiryDate,
+                outcome.reason().name());
         ReviewFail reviewFail = outcome.decision() == Decision.REFERRED
                 && outcome.reviewConfidence() == null
                 ? new ReviewFail(UUID.randomUUID().toString(), kycId, null, "REVIEW", null)
@@ -327,6 +351,7 @@ public class ApplicationService {
             // about the applicant, and a provider outage says nothing whatsoever about them. The
             // applicant did nothing wrong, so a human picks it up.
             return new VerificationOutcome("REVIEW", Decision.REFERRED,
+                    ReasonCode.KYC_PROVIDER_UNAVAILABLE,
                     comment(ReasonCode.KYC_PROVIDER_UNAVAILABLE,
                             "no identity source answered after %d attempts (%s)"
                                     .formatted(provider.attempts().size(), provider.lastFailure())),
@@ -340,6 +365,7 @@ public class ApplicationService {
         // which is precisely what makes it a forgery.
         if (provider.answer().documentReportedForged()) {
             return new VerificationOutcome("FAILED", Decision.REJECTED,
+                    ReasonCode.KYC_DOCUMENT_INVALID,
                     comment(ReasonCode.KYC_DOCUMENT_INVALID, provider,
                             "the issuing register does not recognise this document"),
                     provider.attempts(), null);
@@ -347,6 +373,7 @@ public class ApplicationService {
 
         if (confidence >= acceptThreshold) {
             return new VerificationOutcome("VERIFIED", Decision.ACCEPTED,
+                    ReasonCode.KYC_VERIFIED,
                     comment(ReasonCode.KYC_VERIFIED, provider,
                             "identity confirmed with confidence %d".formatted(confidence)),
                     provider.attempts(), null);
@@ -354,6 +381,7 @@ public class ApplicationService {
 
         if (confidence <= rejectThreshold) {
             return new VerificationOutcome("FAILED", Decision.REJECTED,
+                    ReasonCode.KYC_LOW_CONFIDENCE,
                     comment(ReasonCode.KYC_LOW_CONFIDENCE, provider,
                             "confidence %d is at or below the reject threshold %d"
                                     .formatted(confidence, rejectThreshold)),
@@ -364,6 +392,7 @@ public class ApplicationService {
         // refuse — which is exactly the case a human should look at, and the reason this module has
         // three outcomes rather than two.
         return new VerificationOutcome("REVIEW", Decision.REFERRED,
+                ReasonCode.KYC_LOW_CONFIDENCE,
                 comment(ReasonCode.KYC_LOW_CONFIDENCE, provider,
                         "confidence %d sits between the reject (%d) and accept (%d) thresholds"
                                 .formatted(confidence, rejectThreshold, acceptThreshold)),
@@ -445,8 +474,15 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * @param reason  the locked code behind this outcome. Carried as a field rather than parsed
+     *                back out of {@code comment} — the comment is prose for a human and its shape
+     *                is free to change, so reading a code out of it would make the record depend
+     *                on the wording.
+     */
     private record VerificationOutcome(String status,
                                        Decision decision,
+                                       ReasonCode reason,
                                        String comment,
                                        List<ThirdPartyAttempt> attempts,
                                        Integer reviewConfidence) {

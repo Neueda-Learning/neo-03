@@ -25,6 +25,8 @@ import com.neobank.module.repository.KycRecordRepository;
 import com.neobank.module.repository.ReviewFailRepository;
 import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -161,6 +163,9 @@ class ApplicationServiceTest {
         assertThat(saved.getValue().getType()).isEqualTo("DRIVING_LICENCE");
         assertThat(saved.getValue().getIssuingCountry()).isEqualTo("GB");
         assertThat(saved.getValue().getExpiryDate()).isEqualTo(LocalDate.of(2029, 8, 31));
+        // The same code that goes on the wire is now also on the record, so the operator screen
+        // and the orchestrator cannot tell different stories about one decision.
+        assertThat(saved.getValue().getReasonCode()).isEqualTo("KYC_VERIFIED");
 
         verify(thirdPartyAttempts).saveAll(any());
         assertThat(reportedComment("SIM-01", Decision.ACCEPTED))
@@ -267,6 +272,7 @@ class ApplicationServiceTest {
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
 
+        assertThat(saved.getValue().getReasonCode()).isEqualTo("KYC_DOCUMENT_EXPIRED");
         assertThat(reportedComment("SIM-04", Decision.REJECTED)).startsWith("KYC_DOCUMENT_EXPIRED");
         // Zero attempt rows and zero gateway calls. This is the assertion that proves no provider
         // fee was paid for an answer the date alone gave us.
@@ -462,5 +468,47 @@ class ApplicationServiceTest {
                     assertThat(view.status()).isEqualTo("VERIFIED");
                     assertThat(view.name()).isEqualTo("Jonas Meyer");
                 });
+    }
+
+    @Test
+    @DisplayName("The ladder comes back in the order it happened, mapped to the view")
+    void findAttemptsReturnsTheLadderOldestFirst() {
+        when(kycRecords.findById("KYC-1"))
+                .thenReturn(Optional.of(new KycRecord("KYC-1", "SIM-01", "REVIEW", "AUTO",
+                        "Jonas Meyer", "PASSPORT", "MEYER701794JM9AB", "GB",
+                        LocalDate.of(2029, 8, 31))));
+        when(thirdPartyAttempts.findByKycIdOrderByAttemptNumberAsc("KYC-1")).thenReturn(List.of(
+                attemptRow(AttemptResult.TIMEOUT, null),
+                attemptRow(AttemptResult.ANSWERED, 92)));
+
+        assertThat(service.findAttempts("KYC-1"))
+                .extracting(view -> view.result() + "/" + view.agency())
+                .containsExactly("TIMEOUT/NATIONAL", "ANSWERED/NATIONAL");
+    }
+
+    @Test
+    @DisplayName("A known case with no attempts is an empty list — the provider was never called")
+    void findAttemptsReturnsEmptyForACaseDecidedLocally() {
+        when(kycRecords.findById("KYC-LOCAL"))
+                .thenReturn(Optional.of(new KycRecord("KYC-LOCAL", "SIM-13", "FAILED", "AUTO",
+                        "Henrik Larsen", "PASSPORT", "DK1180552", "DK",
+                        LocalDate.of(2025, 11, 30))));
+        when(thirdPartyAttempts.findByKycIdOrderByAttemptNumberAsc("KYC-LOCAL"))
+                .thenReturn(List.of());
+
+        assertThat(service.findAttempts("KYC-LOCAL")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An unknown case throws, so it cannot be read as a case that made no calls")
+    void findAttemptsThrowsForAnUnknownCase() {
+        // The distinction the 404 exists for. Without the lookup, a typo'd id would return [] and
+        // the screen would confidently report "the provider was never called" about a case that
+        // is not there at all.
+        when(kycRecords.findById("KYC-404")).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.findAttempts("KYC-404"))
+                .isInstanceOf(NoSuchElementException.class)
+                .hasMessageContaining("KYC-404");
     }
 }

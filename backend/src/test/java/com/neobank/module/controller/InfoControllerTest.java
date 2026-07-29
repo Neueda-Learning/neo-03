@@ -18,7 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
         "service.domain=kyc",
         "service.version=0.1.0-SNAPSHOT",
         "service.orchestrator-url=http://localhost:9000",
-        "service.mocked-dependencies=id-verification-provider, sanctions-list, , document-db"
+        "service.mocked-dependencies=id-verification-provider, sanctions-list, , document-db",
+        "id-provider.accept-threshold=95",
+        "id-provider.reject-threshold=55"
 })
 class InfoControllerTest {
 
@@ -38,5 +40,16 @@ class InfoControllerTest {
                 .andExpect(jsonPath("$.mockedDependencies[0]").value("id-verification-provider"))
                 .andExpect(jsonPath("$.mockedDependencies[1]").value("sanctions-list"))
                 .andExpect(jsonPath("$.mockedDependencies[2]").value("document-db"));
+    }
+
+    @Test
+    void reportsTheConfidenceThresholdsSoTheUiNeedNotHardcodeThem() throws Exception {
+        // Deliberately NOT the 92/60 defaults: a UI that printed the numbers as literals would
+        // pass a test that asserted the defaults and still be wrong on any environment that
+        // moved them. Overriding here is what proves the values are actually read.
+        mvc.perform(get("/info"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idProvider.acceptThreshold").value(95))
+                .andExpect(jsonPath("$.idProvider.rejectThreshold").value(55));
     }
 }

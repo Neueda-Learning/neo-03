@@ -51,3 +51,56 @@ export function statusLabel(status, decisionSource) {
 export function time(iso) {
   return iso ? new Date(iso).toLocaleTimeString() : "—";
 }
+
+/**
+ * What one call to an identity agency came back as.
+ *
+ * `SHORT_CIRCUITED` is NEUTRAL, not negative, and the distinction is the point: nothing failed
+ * on that attempt because nothing was tried. The circuit breaker had already decided the provider
+ * was down and skipped it. Colouring it red would report a failure that never happened, and hide
+ * the more interesting fact — that the module stopped calling on purpose.
+ */
+export const attemptTone = toneMapper({
+  ANSWERED: TONES.POSITIVE,
+  TIMEOUT: TONES.WARNING,
+  ERROR: TONES.NEGATIVE,
+  REFUSED: TONES.NEGATIVE,
+  SHORT_CIRCUITED: TONES.NEUTRAL,
+});
+
+/**
+ * Which end of the failover chain an agency sits at.
+ *
+ * Derived here rather than spelled out in a screen, so `NATIONAL` appears in exactly one place in
+ * the front end. The backend's own `Agency` enum is ordered so that the first constant is the
+ * primary; if a third source is ever added, this is the single line that has to learn about it.
+ */
+export function agencyRole(agency) {
+  if (!agency) return null;
+  return agency === "NATIONAL" ? "primary" : "fallback";
+}
+
+/**
+ * A clock time WITH milliseconds.
+ *
+ * `time()` above uses `toLocaleTimeString()`, which drops them — fine for "when did this
+ * application arrive", useless here. The gaps between consecutive attempts are the retry
+ * ladder's backoff, and at second precision a 1.0s wait and a 1.9s wait look identical.
+ */
+export function clockTime(iso) {
+  if (!iso) return "—";
+  const at = new Date(iso);
+  return `${at.toLocaleTimeString()}.${String(at.getMilliseconds()).padStart(3, "0")}`;
+}
+
+/**
+ * The wait between two attempts, in seconds.
+ *
+ * Returns null for the first attempt of a ladder — there is nothing to have waited after — so the
+ * caller can leave the gap out rather than print a misleading "+0.0s".
+ */
+export function gapSeconds(previousIso, iso) {
+  if (!previousIso || !iso) return null;
+  const gap = (new Date(iso) - new Date(previousIso)) / 1000;
+  return gap > 0 ? gap.toFixed(1) : null;
+}

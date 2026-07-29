@@ -15,7 +15,9 @@ public record KycRecordView(
         String issuingCountry,
         LocalDate expiryDate,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        /** The locked KYC_* code behind the outcome. Null on rows decided before change set 009. */
+        String reasonCode) {
 
     public static KycRecordView of(KycRecord row) {
         return new KycRecordView(
@@ -29,6 +31,7 @@ public record KycRecordView(
                 row.getIssuingCountry(),
                 row.getExpiryDate(),
                 row.getCreatedAt(),
-                row.getUpdatedAt());
+                row.getUpdatedAt(),
+                row.getReasonCode());
     }
 }

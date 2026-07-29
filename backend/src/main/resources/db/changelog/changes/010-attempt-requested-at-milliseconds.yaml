@@ -1,0 +1,33 @@
+# Give requested_at the milliseconds it always implied it had.
+#
+# MySQL's TIMESTAMP stores WHOLE SECONDS unless you ask for fractions, so every attempt of a case
+# came back reading .000 and the gaps between them were rounded to the nearest second before anyone
+# could look at them. That matters here more than anywhere else in the schema: the gaps between
+# consecutive requested_at values ARE the retry ladder's backoff, and proving it waited 1s and then
+# 2s is the entire reason this column exists rather than reusing created_at.
+#
+# Found by rendering it — the operator panel printed "5:55:35 PM.000" for all four attempts, which
+# is not a slow clock, it is a column that never held the digits. A test could not have caught it:
+# the service passes a real Instant with milliseconds, and only the round trip through MySQL drops
+# them (H2 would have kept them, which is its own trap).
+#
+# TIMESTAMP(3) — milliseconds, not microseconds. The ladder's smallest interesting interval is a
+# 1000 ms backoff and its shortest call is a few ms; six decimal places would be noise with a
+# storage cost.
+#
+# Existing rows keep .000 and that is correct: they were recorded at second precision and pretending
+# otherwise would invent digits that were never measured.
+databaseChangeLog:
+  - changeSet:
+      id: 010-attempt-requested-at-milliseconds
+      author: neo-03
+      changes:
+        - modifyDataType:
+            tableName: third_party_attempts
+            columnName: requested_at
+            newDataType: TIMESTAMP(3)
+      rollback:
+        - modifyDataType:
+            tableName: third_party_attempts
+            columnName: requested_at
+            newDataType: TIMESTAMP

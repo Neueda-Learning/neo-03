@@ -25,6 +25,16 @@ public class KycRecord {
     @Column(name = "decision_source", nullable = false, length = 16)
     private String decisionSource;
 
+    /**
+     * The locked {@code KYC_*} code that explains the outcome — the same one sent to the
+     * orchestrator at the front of the callback comment.
+     *
+     * <p>Nullable: rows decided before change set 009 have no answer, and an operator override
+     * replaces the machine's outcome without producing a new code.</p>
+     */
+    @Column(name = "reason_code", length = 64)
+    private String reasonCode;
+
     @Column(nullable = false, length = 255)
     private String name;
 
@@ -59,6 +69,7 @@ public class KycRecord {
     protected KycRecord() {
     }
 
+    /** Without a reason code — a case whose outcome has no code to explain it. */
     public KycRecord(String kycId,
                      String applicationId,
                      String status,
@@ -68,6 +79,20 @@ public class KycRecord {
                      String documentId,
                      String issuingCountry,
                      LocalDate expiryDate) {
+        this(kycId, applicationId, status, decisionSource, name, type, documentId, issuingCountry,
+                expiryDate, null);
+    }
+
+    public KycRecord(String kycId,
+                     String applicationId,
+                     String status,
+                     String decisionSource,
+                     String name,
+                     String type,
+                     String documentId,
+                     String issuingCountry,
+                     LocalDate expiryDate,
+                     String reasonCode) {
         this.kycId = kycId;
         this.applicationId = applicationId;
         this.status = status;
@@ -77,6 +102,7 @@ public class KycRecord {
         this.documentId = documentId;
         this.issuingCountry = issuingCountry;
         this.expiryDate = expiryDate;
+        this.reasonCode = reasonCode;
     }
 
     @PrePersist
@@ -112,6 +138,10 @@ public class KycRecord {
 
     public void markUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getReasonCode() {
+        return reasonCode;
     }
 
     public String getName() {

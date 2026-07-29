@@ -1,0 +1,24 @@
+# The reason code becomes part of the record, instead of only leaving the building.
+#
+# ApplicationService already computes one of the six locked KYC_* codes for every decision and puts
+# it at the front of the callback comment — but nothing kept it. So the orchestrator could tell you
+# WHY an applicant was parked and this module's own operator screen could not, which is backwards:
+# the team that made the decision had less of it written down than the team that received it.
+#
+# Nullable, and not backfilled. Rows decided before this column existed genuinely have no answer,
+# and inventing one would put a code against a decision that was never explained that way.
+databaseChangeLog:
+  - changeSet:
+      id: 009-add-reason-code-to-kyc-record
+      author: neo-03
+      changes:
+        - addColumn:
+            tableName: kyc_record
+            columns:
+              - column:
+                  name: reason_code
+                  type: VARCHAR(64)
+      rollback:
+        - dropColumn:
+            tableName: kyc_record
+            columnName: reason_code

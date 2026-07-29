@@ -40,5 +40,20 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(decision),
   }),
-  getApplication: (id) => request(`/api/v1/applications/${id}`),
+
+  // Every provider call behind one case, oldest first — what the board's detail panel draws.
+  //
+  // Keyed on kycId, not applicationId: application_id has no unique constraint, so one
+  // application can own several cases and an application-keyed lookup would have to guess.
+  // It is also the key the board rows already carry.
+  //
+  // A known case with no attempts answers 200 [] — the provider was never called. Only an
+  // unknown case is a 404.
+  listAttempts: (kycId) => request(`/api/v1/applications/${kycId}/attempts`),
 };
+
+// REMOVED: getApplication(id) -> GET /api/v1/applications/{id}
+//
+// It had never worked. No backend route matched it, so every call 404'd, and nothing in this app
+// called it — a function that looks like a usable hook and is not is worse than a missing one,
+// because the next person writes a screen around it before finding out.

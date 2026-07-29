@@ -41,6 +41,20 @@ public class InfoController {
     @Value("${service.mocked-dependencies:}")
     private String mockedDependencies;
 
+    /**
+     * The confidence bands, served so the operator screen can show where a score landed without
+     * hard-coding the numbers.
+     *
+     * <p>They are configuration — compliance policy, per {@code ApplicationService} — so a UI that
+     * printed "accept ≥92" as a literal would start lying the moment someone set
+     * {@code ID_PROVIDER_ACCEPT_THRESHOLD} and would never be corrected.</p>
+     */
+    @Value("${id-provider.accept-threshold:92}")
+    private int acceptThreshold;
+
+    @Value("${id-provider.reject-threshold:60}")
+    private int rejectThreshold;
+
     @GetMapping("/info")
     public Map<String, Object> info() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -51,6 +65,11 @@ public class InfoController {
         body.put("version", version);
         body.put("orchestratorUrl", orchestratorUrl);
         body.put("mockedDependencies", split(mockedDependencies));
+
+        Map<String, Object> idProvider = new LinkedHashMap<>();
+        idProvider.put("acceptThreshold", acceptThreshold);
+        idProvider.put("rejectThreshold", rejectThreshold);
+        body.put("idProvider", idProvider);
         return body;
     }
 
