@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.dto.ManualReviewDecisionRequest;
@@ -22,6 +23,7 @@ import java.time.Instant;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -149,6 +151,56 @@ class ReviewQueueServiceTest {
         assertThat(review.getManualReviewComment()).isEqualTo("Identity evidence is insufficient");
         verify(orchestrator).applicationStatusUpdate(
                 "APP-2", Decision.REJECTED, "Identity evidence is insufficient");
+    }
+
+    @Test
+    void failsWhenTheKycRecordIsMissing() {
+        when(kycRecords.findById("KYC-404")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.recordManualReviewDecision(
+                "KYC-404",
+                new ManualReviewDecisionRequest("SCORE", "ACCEPTED", "Checked")))
+                .isInstanceOf(NoSuchElementException.class)
+                .hasMessage("KYC record not found: KYC-404");
+    }
+
+    @Test
+    void failsWhenTheKycRecordIsNotAwaitingReview() {
+        KycRecord record = new KycRecord("KYC-3", "APP-3", "VERIFIED", "AUTO", "Jonas Meyer", "PASSPORT",
+                "P1234567", "GB", java.time.LocalDate.of(2029, 8, 31));
+        when(kycRecords.findById("KYC-3")).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.recordManualReviewDecision(
+                "KYC-3",
+                new ManualReviewDecisionRequest("SCORE", "ACCEPTED", "Checked")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("KYC record is not awaiting review: KYC-3");
+    }
+
+    @Test
+    void failsWhenTheReviewSourceIsUnknown() {
+        KycRecord record = recordEntity("KYC-4", "APP-4");
+        when(kycRecords.findById("KYC-4")).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.recordManualReviewDecision(
+                "KYC-4",
+                new ManualReviewDecisionRequest("OTHER", "ACCEPTED", "Checked")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Unknown review source: OTHER");
+    }
+
+    @Test
+    void failsWhenAQueueEntryHasNoMatchingKycRecord() {
+        ReviewFail review = fail("F-9", "KYC-9", "2026-07-21T09:00:00Z");
+        when(reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW"))
+                .thenReturn(List.of(review));
+        when(reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW"))
+                .thenReturn(List.of());
+        when(kycRecords.findAllById(any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.findEarliestReviewQueue())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Review record has no KYC record: KYC-9");
     }
 
     private static ReviewFail fail(String id, String kycId, String createdAt) {
