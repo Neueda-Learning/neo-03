@@ -102,6 +102,7 @@ class ApplicationServiceTest {
         assertThat(saved.getValue().getKycId()).isNotBlank();
         assertThat(saved.getValue().getApplicationId()).isEqualTo("SIM-01");
         assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
         assertThat(saved.getValue().getName()).isEqualTo("Jonas Meyer");
         assertThat(saved.getValue().getType()).isEqualTo("DRIVING_LICENCE");
         assertThat(saved.getValue().getDocumentId()).isEqualTo("MEYER701794JM9AB");
@@ -135,6 +136,7 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-04",
@@ -153,9 +155,28 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-05", Decision.ACCEPTED, "driving_licence verified on attempt 1 (confidence 92)");
+    }
+
+    @Test
+    void acceptsDayMonthYearExpiryDatesFromTheSidecarCorpus() {
+        when(idVerificationClient.verifyPassport()).thenReturn(94);
+
+        service.processApplication(request("SIM-09", "PASSPORT", "31-12-2030"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getExpiryDate()).isEqualTo(LocalDate.of(2030, 12, 31));
+        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
+
+        verify(orchestrator).applicationStatusUpdate(
+                "SIM-09",
+                Decision.ACCEPTED,
+                "passport verified on attempt 1 (confidence 94)");
     }
 
     @Test
@@ -167,6 +188,7 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
         verify(thirdPartyAttempts).saveAll(attempts.capture());
@@ -189,6 +211,7 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("REVIEW");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
         verify(thirdPartyAttempts).saveAll(attempts.capture());
@@ -220,6 +243,7 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("REVIEW");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
         verify(thirdPartyAttempts).saveAll(attempts.capture());
@@ -252,6 +276,7 @@ class ApplicationServiceTest {
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
         ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
         verify(thirdPartyAttempts).saveAll(attempts.capture());
         assertThat(attempts.getValue()).singleElement().satisfies(attempt -> {
@@ -287,6 +312,7 @@ class ApplicationServiceTest {
                         "KYC-1",
                         "SIM-01",
                         "VERIFIED",
+                        "AUTO",
                         "Jonas Meyer",
                         "DRIVING_LICENCE",
                         "MEYER701794JM9AB",
@@ -298,6 +324,7 @@ class ApplicationServiceTest {
                 .satisfies(view -> {
                     assertThat(view.applicationId()).isEqualTo("SIM-01");
                     assertThat(view.status()).isEqualTo("VERIFIED");
+                    assertThat(view.decisionSource()).isEqualTo("AUTO");
                     assertThat(view.name()).isEqualTo("Jonas Meyer");
                 });
     }

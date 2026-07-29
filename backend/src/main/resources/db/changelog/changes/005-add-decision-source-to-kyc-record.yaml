@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-add-decision-source-to-kyc-record
+      author: neo-03
+      changes:
+        - addColumn:
+            tableName: kyc_record
+            columns:
+              - column:
+                  name: decision_source
+                  type: VARCHAR(16)
+                  defaultValue: AUTO
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: kyc_record
+            columnName: decision_source

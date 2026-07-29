@@ -12,7 +12,7 @@ import {
   SearchInput,
   Toolbar,
 } from '../design-system';
-import { statusTone, STATUSES, time } from '../status.js';
+import { statusLabel, statusTone, STATUSES, time } from '../status.js';
 
 const FILTERS = ['All', ...STATUSES];
 const PAGE_SIZE = 10;
@@ -36,7 +36,8 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
   const counts = useMemo(
     () =>
       requests.reduce((acc, r) => {
-        acc[r.status] = (acc[r.status] ?? 0) + 1;
+        const label = statusLabel(r.status, r.decisionSource);
+        acc[label] = (acc[label] ?? 0) + 1;
         return acc;
       }, {}),
     [requests]
@@ -45,7 +46,7 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return requests.filter((r) => {
-      if (filter !== 'All' && r.status !== filter) return false;
+      if (filter !== 'All' && statusLabel(r.status, r.decisionSource) !== filter) return false;
       if (!needle) return true;
       return [r.applicationId, r.name, r.documentId]
         .filter(Boolean)
@@ -88,10 +89,10 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
       render: (r) =>
         r.status === 'REVIEW' ? (
           <button type="button" className="app-status-link" onClick={() => openReviewQueue(r)}>
-            <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+            <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
           </button>
         ) : (
-          <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+          <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
         ),
     },
     { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },

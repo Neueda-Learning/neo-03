@@ -22,6 +22,9 @@ public class KycRecord {
     @Column(nullable = false, length = 32)
     private String status;
 
+    @Column(name = "decision_source", nullable = false, length = 16)
+    private String decisionSource;
+
     @Column(nullable = false, length = 255)
     private String name;
 
@@ -46,6 +49,7 @@ public class KycRecord {
     public KycRecord(String kycId,
                      String applicationId,
                      String status,
+                     String decisionSource,
                      String name,
                      String type,
                      String documentId,
@@ -54,6 +58,7 @@ public class KycRecord {
         this.kycId = kycId;
         this.applicationId = applicationId;
         this.status = status;
+        this.decisionSource = decisionSource;
         this.name = name;
         this.type = type;
         this.documentId = documentId;
@@ -82,6 +87,14 @@ public class KycRecord {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getDecisionSource() {
+        return decisionSource;
+    }
+
+    public void setDecisionSource(String decisionSource) {
+        this.decisionSource = decisionSource;
     }
 
     public String getName() {
