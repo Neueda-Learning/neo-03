@@ -129,12 +129,14 @@ function AttemptRail({ attempts }) {
                 `transparent`, so a mask hides nothing and the rule runs straight through the text.
                 Making the gap structural means it cannot fail on any background. */}
             {index > 0 && (
-              <span className="app-rail__link" aria-hidden="true">
-                <span className="app-rail__line" />
+              <span className="app-rail__link">
+                {/* The rules are decoration and are hidden from assistive tech; the wait itself is
+                    NOT — it is a fact about the ladder that appears nowhere else on the page. */}
+                <span className="app-rail__line" aria-hidden="true" />
                 {gap && (
                   <>
-                    <span className="app-rail__wait">{gap}s</span>
-                    <span className="app-rail__line" />
+                    <span className="app-rail__wait">waiting {gap}s</span>
+                    <span className="app-rail__line" aria-hidden="true" />
                   </>
                 )}
               </span>
