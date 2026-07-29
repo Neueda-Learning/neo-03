@@ -276,4 +276,39 @@ class ProviderGatewayTest {
 
         assertThat(sleeper.waits).containsExactly(1000L, 2000L, 2000L, 2000L);
     }
+
+    @Test
+    @DisplayName("An open breaker waits for nothing — a skipped attempt has nothing to back off from")
+    void noBackoffAfterAShortCircuitedAttempt() {
+        // The breaker exists so an outage costs nothing. Sleeping between attempts that never left
+        // the module spends the full 1s + 2s of a worker thread on an application whose calls were
+        // all skipped, and delays the failover to the fallback by the same three seconds.
+        ProviderGateway tightGateway = newGateway(1);   // opens after a single failure
+        when(client.verify(any(), any())).thenThrow(down());
+
+        tightGateway.verify("kyc-1", APPLICATION);      // trips both breakers
+        sleeper.waits.clear();
+
+        ProviderGateway.ProviderOutcome second = tightGateway.verify("kyc-2", APPLICATION);
+
+        assertThat(second.attempts()).allSatisfy(attempt ->
+                assertThat(attempt.getResult()).isEqualTo("SHORT_CIRCUITED"));
+        assertThat(sleeper.waits)
+                .as("nothing was called, so there is nothing to wait for")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("A ladder that half short-circuits waits only for the calls it really made")
+    void backoffFollowsRealCallsOnly() {
+        // The mixed case, and the one the operator screen showed: the first attempt is a real call
+        // that fails and trips the breaker, so it earns its 1s. Attempts 2 and 3 are skipped and
+        // earn nothing. Before the fix this waited 1s AND 2s.
+        ProviderGateway tightGateway = newGateway(1);
+        when(client.verify(any(), any())).thenThrow(down());
+
+        tightGateway.verify("kyc-1", APPLICATION);
+
+        assertThat(sleeper.waits).containsExactly(1000L);
+    }
 }

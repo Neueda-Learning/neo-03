@@ -111,7 +111,19 @@ public class ProviderGateway {
                     }
                     return new ProviderOutcome(outcome.answer(), agency, failedOver, attempts, null);
                 }
-                if (attempt < budget) {
+
+                // Back off only after an attempt that actually happened. A backoff exists to give
+                // a struggling provider room between two requests — and when the breaker is open
+                // there is no request to give room to, because nothing left this module.
+                //
+                // Waiting anyway partly undoes the breaker: it exists so that an outage costs
+                // nothing, yet every application during one still burned the full 1s + 2s of a
+                // worker thread waiting between calls it never made, and delayed the failover to
+                // the fallback by the same three seconds. Visible on the operator screen as two
+                // hollow dots with "1.0s" and "2.0s" written on the line between them, which is
+                // where it was spotted.
+                boolean somethingWasCalled = !isShortCircuited(outcome.row());
+                if (attempt < budget && somethingWasCalled) {
                     sleeper.sleep(backoffFor(attempt));
                 }
             }
@@ -123,6 +135,10 @@ public class ProviderGateway {
         log.warn("no identity source answered after {} attempts — last result {}",
                 attempts.size(), lastResult);
         return new ProviderOutcome(null, null, false, attempts, lastResult);
+    }
+
+    private static boolean isShortCircuited(ThirdPartyAttempt row) {
+        return AttemptResult.SHORT_CIRCUITED.name().equals(row.getResult());
     }
 
     private Attempt callOnce(Agency agency, Application application, String kycId,
