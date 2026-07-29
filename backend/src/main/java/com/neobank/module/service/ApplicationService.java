@@ -4,13 +4,17 @@ import com.neobank.module.dto.KycRecordView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
+import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
+import com.neobank.module.model.ThirdPartyAttempt;
 import com.neobank.module.repository.KycRecordRepository;
+import com.neobank.module.repository.ThirdPartyAttemptRepository;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
@@ -34,12 +38,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(ApplicationService.class);
+    private static final int MAX_THIRD_PARTY_ATTEMPTS = 3;
+    private static final long INITIAL_BACKOFF_MILLIS = 100L;
+    private static final int ACCEPT_CONFIDENCE_MIN = 92;
+    private static final int REVIEW_CONFIDENCE_MIN = 61;
 
     private final Executor executor;
     private final KycRecordRepository kycRecords;
+    private final ThirdPartyAttemptRepository thirdPartyAttempts;
     private final OrchestratorClient orchestrator;
+    private final IdVerificationClient idVerificationClient;
     private final Clock clock;
-    private final Random random = new Random();
 
     /**
      * {@code applicationTaskExecutor} is the thread pool Spring Boot configures for you. Tune it in
@@ -49,11 +58,15 @@ public class ApplicationService {
      */
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
                               KycRecordRepository kycRecords,
+                              ThirdPartyAttemptRepository thirdPartyAttempts,
                               OrchestratorClient orchestrator,
+                              IdVerificationClient idVerificationClient,
                               Clock clock) {
         this.executor = executor;
         this.kycRecords = kycRecords;
+        this.thirdPartyAttempts = thirdPartyAttempts;
         this.orchestrator = orchestrator;
+        this.idVerificationClient = idVerificationClient;
         this.clock = clock;
     }
 
@@ -85,12 +98,12 @@ public class ApplicationService {
         String applicationId = request.applicationId();
         try {
             log.info("Processing KYC application — {}", request.summary());
-            log.info("Random passport confidence test output — {}", PassportVerification());
-            log.info("Random driver license confidence test output — {}",
-                    DriverLicenseVerification());
 
             KycAssessment assessment = assess(request);
             kycRecords.save(assessment.record());
+                if (!assessment.attempts().isEmpty()) {
+                thirdPartyAttempts.saveAll(assessment.attempts());
+                }
 
             orchestrator.applicationStatusUpdate(
                     applicationId, assessment.decision(), assessment.comment());
@@ -119,57 +132,131 @@ public class ApplicationService {
                 required(application.identityDocument(), "application.identityDocument");
         LocalDate expiryDate = LocalDate.parse(required(
                 document.expiryDate(), "application.identityDocument.expiryDate"));
+        String documentType = required(document.type(), "application.identityDocument.type");
         boolean expiresTooSoon = expiryDate.isBefore(LocalDate.now(clock).plusMonths(6));
-        String status = expiresTooSoon ? "FAILED" : "VERIFIED";
-        Decision decision = expiresTooSoon ? Decision.REJECTED : Decision.ACCEPTED;
-        String comment = expiresTooSoon
-                ? "identity document expires in less than 6 months"
-                : "identity document verified";
+        String kycId = UUID.randomUUID().toString();
+
+        VerificationOutcome outcome = expiresTooSoon
+                ? new VerificationOutcome("FAILED", Decision.REJECTED,
+                "identity document expires in less than 6 months", List.of())
+                : verifyIdentityDocument(kycId, documentType);
 
         KycRecord record = new KycRecord(
-                UUID.randomUUID().toString(),
+                kycId,
                 request.applicationId(),
-                status,
+                outcome.status(),
                 required(applicant.fullName(), "application.applicant.fullName"),
-                required(document.type(), "application.identityDocument.type"),
+                documentType,
                 required(document.documentId(), "application.identityDocument.documentId"),
                 required(document.issuingCountry(),
                         "application.identityDocument.issuingCountry"),
                 expiryDate);
-        return new KycAssessment(record, decision, comment);
+        return new KycAssessment(record, outcome.decision(), outcome.comment(), outcome.attempts());
     }
 
-    private Integer PassportVerification() {
-        boolean networkConnected = random.nextInt(4) < 3;
-        if (!networkConnected) {
-            return -1;
-        }
-
-        return ThirdPartyPassport();
-    }
-
-    private Integer ThirdPartyPassport() {
-        return switch (random.nextInt(3)) {
-            case 0 -> random.nextInt(61);
-            case 1 -> 61 + random.nextInt(31);
-            default -> 92 + random.nextInt(9);
+    private VerificationOutcome verifyIdentityDocument(String kycId, String documentType) {
+        return switch (documentType.toUpperCase(Locale.ROOT)) {
+            case "PASSPORT" -> verifyWithRetries(kycId, documentType,
+                    idVerificationClient::verifyPassport);
+            case "NATIONAL_ID" -> verifyWithRetries(kycId, documentType,
+                idVerificationClient::verifyNationalId);
+            case "DRIVING_LICENCE" -> verifyWithRetries(kycId, documentType,
+                    idVerificationClient::verifyDrivingLicense);
+            default -> new VerificationOutcome(
+                    "VERIFIED",
+                    Decision.ACCEPTED,
+                    "identity document verified",
+                    List.of());
         };
     }
 
-    private Integer DriverLicenseVerification() {
-        boolean networkConnected = random.nextInt(4) < 3;
-        if (!networkConnected) {
-            return -1;
+    private VerificationOutcome verifyWithRetries(String kycId,
+                                                  String documentType,
+                                                  VerificationCall verificationCall) {
+        List<ThirdPartyAttempt> attempts = new ArrayList<>();
+        for (int attemptNumber = 1; attemptNumber <= MAX_THIRD_PARTY_ATTEMPTS; attemptNumber++) {
+            Integer confidence = verificationCall.verify();
+            AttemptOutcome attemptOutcome = classifyAttempt(confidence);
+            attempts.add(new ThirdPartyAttempt(
+                    UUID.randomUUID().toString(),
+                    kycId,
+                    attemptNumber,
+                    documentType,
+                attemptOutcome.result(),
+                attemptOutcome.storeConfidence() ? confidence : null,
+                attemptComment(documentType, attemptOutcome)));
+
+            switch (attemptOutcome) {
+            case ACCEPTED -> {
+                return new VerificationOutcome(
+                    "VERIFIED",
+                    Decision.ACCEPTED,
+                    "%s verified on attempt %d (confidence %d)".formatted(
+                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
+                    attempts);
+            }
+            case REVIEW -> {
+                return new VerificationOutcome(
+                    "REVIEW",
+                    Decision.REFERRED,
+                    "%s requires manual review on attempt %d (confidence %d)".formatted(
+                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
+                    attempts);
+            }
+            case REJECTED -> {
+                return new VerificationOutcome(
+                    "FAILED",
+                    Decision.REJECTED,
+                    "%s verification failed on attempt %d (confidence %d)".formatted(
+                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
+                    attempts);
+            }
+            case UNAVAILABLE -> {
+                if (attemptNumber < MAX_THIRD_PARTY_ATTEMPTS) {
+                backoff(attemptNumber);
+                }
+            }
+            }
         }
 
-        return ThirdPartyDriverLicense();
+        return new VerificationOutcome(
+                "REVIEW",
+                Decision.REFERRED,
+                "%s verification unavailable after %d attempts; manual review required".formatted(
+                        documentType.toLowerCase(Locale.ROOT), MAX_THIRD_PARTY_ATTEMPTS),
+                attempts);
     }
 
-    private Integer ThirdPartyDriverLicense() {
-        return switch (random.nextInt(3)) {
-            case 0 -> random.nextInt(61);
-            case 1 -> 61 + random.nextInt(31);
-            default -> 92 + random.nextInt(9);
+    private void backoff(int attemptNumber) {
+        long delayMillis = INITIAL_BACKOFF_MILLIS << (attemptNumber - 1);
+        try {
+            Thread.sleep(delayMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("third-party retry interrupted", e);
+        }
+    }
+
+    private AttemptOutcome classifyAttempt(Integer confidence) {
+        if (confidence == null || confidence < 0) {
+            return AttemptOutcome.UNAVAILABLE;
+        }
+        if (confidence >= ACCEPT_CONFIDENCE_MIN) {
+            return AttemptOutcome.ACCEPTED;
+        }
+        if (confidence >= REVIEW_CONFIDENCE_MIN) {
+            return AttemptOutcome.REVIEW;
+        }
+        return AttemptOutcome.REJECTED;
+    }
+
+    private String attemptComment(String documentType, AttemptOutcome outcome) {
+        String normalizedType = documentType.toLowerCase(Locale.ROOT);
+        return switch (outcome) {
+            case ACCEPTED -> "%s verification succeeded".formatted(normalizedType);
+            case REVIEW -> "%s verification needs review".formatted(normalizedType);
+            case REJECTED -> "%s verification failed".formatted(normalizedType);
+            case UNAVAILABLE -> "%s provider unavailable".formatted(normalizedType);
         };
     }
 
@@ -180,6 +267,42 @@ public class ApplicationService {
         return value;
     }
 
-    private record KycAssessment(KycRecord record, Decision decision, String comment) {
+    private interface VerificationCall {
+        Integer verify();
+    }
+
+    private enum AttemptOutcome {
+        ACCEPTED("SUCCESS", true),
+        REVIEW("REVIEW", true),
+        REJECTED("FAILED", true),
+        UNAVAILABLE("UNAVAILABLE", false);
+
+        private final String result;
+        private final boolean storeConfidence;
+
+        AttemptOutcome(String result, boolean storeConfidence) {
+            this.result = result;
+            this.storeConfidence = storeConfidence;
+        }
+
+        private String result() {
+            return result;
+        }
+
+        private boolean storeConfidence() {
+            return storeConfidence;
+        }
+    }
+
+    private record VerificationOutcome(String status,
+                                       Decision decision,
+                                       String comment,
+                                       List<ThirdPartyAttempt> attempts) {
+    }
+
+    private record KycAssessment(KycRecord record,
+                                 Decision decision,
+                                 String comment,
+                                 List<ThirdPartyAttempt> attempts) {
     }
 }

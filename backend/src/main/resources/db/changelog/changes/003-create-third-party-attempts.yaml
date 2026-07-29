@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-third-party-attempts
+      author: neo-03
+      changes:
+        - createTable:
+            tableName: third_party_attempts
+            columns:
+              - column:
+                  name: third_party_attempt_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: kyc_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attempt_number
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: document_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: result
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: confidence
+                  type: INT
+              - column:
+                  name: comment
+                  type: VARCHAR(1000)
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: third_party_attempts
+            indexName: idx_third_party_attempts_kyc
+            columns:
+              - column:
+                  name: kyc_id
+        - addForeignKeyConstraint:
+            baseTableName: third_party_attempts
+            baseColumnNames: kyc_id
+            constraintName: fk_third_party_attempts_kyc_record
+            referencedTableName: kyc_record
+            referencedColumnNames: kyc_id
+      rollback:
+        - dropTable:
+            tableName: third_party_attempts

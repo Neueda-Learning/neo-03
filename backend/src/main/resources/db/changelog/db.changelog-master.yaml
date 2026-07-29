@@ -6,3 +6,5 @@ databaseChangeLog:
       file: db/changelog/changes/001-create-demo-showcase.yaml
   - include:
       file: db/changelog/changes/002-create-kyc-review-tables.yaml
+  - include:
+      file: db/changelog/changes/003-create-third-party-attempts.yaml

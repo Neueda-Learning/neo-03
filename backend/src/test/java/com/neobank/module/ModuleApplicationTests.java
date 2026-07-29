@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +48,26 @@ class ModuleApplicationTests {
         Executor applicationTaskExecutor() {
             return Runnable::run;
         }
+
+                @Bean
+                IdVerificationClient idVerificationClient() {
+                        return new IdVerificationClient() {
+                                @Override
+                                public Integer verifyPassport() {
+                                        return 95;
+                                }
+
+                                @Override
+                                public Integer verifyNationalId() {
+                                        return 95;
+                                }
+
+                                @Override
+                                public Integer verifyDrivingLicense() {
+                                        return 95;
+                                }
+                        };
+                }
     }
 
     /** SIM-01 from the sidecar corpus, trimmed to what these assertions read. */
