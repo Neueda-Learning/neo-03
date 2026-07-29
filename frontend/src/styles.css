@@ -328,3 +328,107 @@
   color: var(--ds-color-text-muted);
   font-family: var(--ds-figure-family, var(--ds-font-mono));
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * The confidence scale — where a score fell, against the thresholds that decide what happens.
+ *
+ * Bands are drawn TO SCALE from the live thresholds, so the reject zone really is six times the
+ * width of the accept zone and a 74 visibly sits nearer the lower boundary. That is the whole
+ * point: it replaced a sentence listing the same three numbers, and a position is easier to read
+ * than an inequality. --ds-* tokens only.
+ * ------------------------------------------------------------------------------------------- */
+
+.app-scale {
+  /* Room on both sides for a marker sitting at 0 or at 100 without clipping its bubble. */
+  padding: 0 var(--ds-space-4);
+}
+
+.app-scale__track {
+  position: relative;
+  display: flex;
+  height: var(--ds-space-5);
+  border-radius: var(--ds-radius-sm);
+  overflow: visible;
+}
+
+.app-scale__band {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: var(--ds-band-surface);
+  /* Hairlines between the zones so the boundaries are legible even where two bands are close in
+   * value — the numbers under them say where, this says that there IS one. */
+  border-right: var(--ds-border-width) solid var(--ds-color-canvas);
+}
+
+.app-scale__band:first-child { border-radius: var(--ds-radius-sm) 0 0 var(--ds-radius-sm); }
+.app-scale__band:last-child  { border-radius: 0 var(--ds-radius-sm) var(--ds-radius-sm) 0; border-right: 0; }
+
+/* -text, not -ink. `ink` is the tone AS TEXT on the page background and is held to 4.5:1 there;
+ * on the tone's own surface it is dark-on-dark — #8c3629 on the declined red was unreadable.
+ * `-surface` + `-text` is the pair the design system already tests, via Badge. */
+.app-scale__band--negative { --ds-band-surface: var(--ds-tone-negative-surface); --ds-band-ink: var(--ds-tone-negative-text); }
+.app-scale__band--info     { --ds-band-surface: var(--ds-tone-info-surface);     --ds-band-ink: var(--ds-tone-info-text); }
+.app-scale__band--positive { --ds-band-surface: var(--ds-tone-positive-surface); --ds-band-ink: var(--ds-tone-positive-text); }
+
+/* The band the score actually landed in, filled rather than tinted. Colour is never the only
+ * signal — the marker sits inside this band too — but it is the one that should catch the eye. */
+.app-scale__band--live {
+  background: var(--ds-band-surface);
+  box-shadow: inset 0 0 0 var(--ds-border-width-strong, 2px) var(--ds-color-text);
+}
+
+.app-scale__band-label {
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-band-ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* A narrow band (accept is 8% of the scale) must not force the flex item wider than its share. */
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* The reading, pinned to its own position rather than printed beside the scale. */
+.app-scale__marker {
+  position: absolute;
+  top: calc(var(--ds-space-2) * -1);
+  bottom: calc(var(--ds-space-2) * -1);
+  width: var(--ds-border-width-strong, 2px);
+  background: var(--ds-marker-ink);
+  transform: translateX(-50%);
+}
+
+.app-scale__marker--positive { --ds-marker-ink: var(--ds-tone-positive-ink); }
+.app-scale__marker--info     { --ds-marker-ink: var(--ds-tone-info-ink); }
+.app-scale__marker--negative { --ds-marker-ink: var(--ds-tone-negative-ink); }
+.app-scale__marker--neutral  { --ds-marker-ink: var(--ds-tone-neutral-ink); }
+
+.app-scale__value {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 var(--ds-space-1);
+  color: var(--ds-marker-ink);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.app-scale__ticks {
+  position: relative;
+  height: var(--ds-space-4);
+}
+
+/* The two numbers that decide something. 0 and 100 are not worth the ink. */
+.app-scale__tick {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-2xs);
+}

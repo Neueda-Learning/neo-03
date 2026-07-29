@@ -1,6 +1,5 @@
 import {
   Badge,
-  BarChart,
   Caption,
   EmptyState,
   Spinner,
@@ -75,21 +74,7 @@ export function AttemptTrail({ record, attempts, loading, error, thresholds }) {
       <Caption>{summarise(attempts, primaryCount, failedOver, answered)}</Caption>
 
       {answered && (
-        <Stack gap={1}>
-          <BarChart
-            data={[{
-              label: 'confidence',
-              value: answered.confidence,
-              // The bar is coloured by the BAND, not by the fact that somebody answered. It used
-              // to be green whenever the provider replied, so a confidence of 41 — a rejection —
-              // drew the same reassuring green as a 99.
-              tone: confidenceTone(confidenceBand(answered.confidence, thresholds)),
-            }]}
-            max={100}
-            labelWidth="7rem"
-          />
-          <Caption>{describeBands(answered.confidence, thresholds)}</Caption>
-        </Stack>
+        <ConfidenceScale confidence={answered.confidence} thresholds={thresholds} />
       )}
 
       <AttemptRail attempts={attempts} />
@@ -211,14 +196,56 @@ function summarise(attempts, primaryCount, failedOver, answered) {
   return parts.join(' · ');
 }
 
-/** Where the score landed, in the bank's own words — thresholds come from /info, never hardcoded. */
-function describeBands(confidence, thresholds) {
-  if (!thresholds) return `confidence ${confidence}`;
+/**
+ * Where a score fell, against the two thresholds that decide what happens to it.
+ *
+ * <p>This replaced a bar plus a sentence — "confidence 74 · reject ≤60 · accept ≥92 · between the
+ * thresholds — a human decides". Every fact in that sentence is a position, and positions are
+ * what a picture is for: the bands are drawn to scale, so the reject zone really is six times the
+ * width of the accept zone, and 74 visibly sits nearer the lower boundary than the upper one.
+ * Nobody has to hold three numbers in their head to see it.</p>
+ *
+ * <p>The thresholds come from {@code /info} and the bands are sized from them, so moving the
+ * accept threshold to 95 redraws the scale rather than making a hard-coded caption lie.</p>
+ */
+function ConfidenceScale({ confidence, thresholds }) {
+  // Without the thresholds there is no scale to draw — only a number, said plainly.
+  if (!thresholds) return <Caption>confidence {confidence}</Caption>;
+
   const { acceptThreshold, rejectThreshold } = thresholds;
-  const said = {
-    accept: 'at or above accept',
-    reject: 'at or below reject',
-    review: 'between the thresholds — a human decides',
-  }[confidenceBand(confidence, thresholds)];
-  return `confidence ${confidence} · reject ≤${rejectThreshold} · accept ≥${acceptThreshold} · ${said}`;
+  const band = confidenceBand(confidence, thresholds);
+  const bands = [
+    { key: 'reject', tone: 'negative', from: 0, to: rejectThreshold, label: 'reject' },
+    { key: 'review', tone: 'info', from: rejectThreshold, to: acceptThreshold, label: 'review' },
+    { key: 'accept', tone: 'positive', from: acceptThreshold, to: 100, label: 'accept' },
+  ];
+
+  return (
+    <div className="app-scale">
+      <div className="app-scale__track">
+        {bands.map((b) => (
+          <span
+            key={b.key}
+            className={`app-scale__band app-scale__band--${b.tone}${b.key === band ? ' app-scale__band--live' : ''}`}
+            style={{ width: `${b.to - b.from}%` }}
+            title={`${b.label} ${b.from}–${b.to}`}
+          >
+            <span className="app-scale__band-label">{b.label}</span>
+          </span>
+        ))}
+
+        {/* The reading, pinned to its position on the scale rather than printed beside it. */}
+        <span className={`app-scale__marker app-scale__marker--${confidenceTone(band)}`}
+              style={{ left: `${confidence}%` }}>
+          <span className="app-scale__value">{confidence}</span>
+        </span>
+      </div>
+
+      {/* Only the two numbers that decide anything. 0 and 100 are not worth the ink. */}
+      <div className="app-scale__ticks" aria-hidden="true">
+        <span className="app-scale__tick" style={{ left: `${rejectThreshold}%` }}>{rejectThreshold}</span>
+        <span className="app-scale__tick" style={{ left: `${acceptThreshold}%` }}>{acceptThreshold}</span>
+      </div>
+    </div>
+  );
 }
