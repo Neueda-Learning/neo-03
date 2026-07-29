@@ -124,24 +124,33 @@ function AttemptRail({ attempts }) {
               + (attempt.providerRef ? ` · ${attempt.providerRef}` : '')
               + (attempt.comment ? `\n${attempt.comment}` : '')}
           >
+            {/* Line — label — line, as three flex children. The label is not painted OVER the
+                connector with a background: under the glass theme --ds-color-surface is literally
+                `transparent`, so a mask hides nothing and the rule runs straight through the text.
+                Making the gap structural means it cannot fail on any background. */}
             {index > 0 && (
               <span className="app-rail__link" aria-hidden="true">
-                <span className="app-rail__wait">{gap ? `${gap}s` : ''}</span>
+                <span className="app-rail__line" />
+                {gap && (
+                  <>
+                    <span className="app-rail__wait">{gap}s</span>
+                    <span className="app-rail__line" />
+                  </>
+                )}
               </span>
             )}
 
-            {/* The dot is a mark, not a label — the result word sits under it, so nothing here
-                depends on reading a colour, and no text has to survive being placed on a strong
-                accent fill. */}
+            {/* The dot is a mark, not a label — the target and the outcome sit under it, so
+                nothing here depends on reading a colour. */}
             <span className={`app-rail__dot app-rail__dot--${attemptTone(attempt.result)}`} />
 
-            <span className={`app-rail__result app-rail__result--${attemptTone(attempt.result)}`}>
-              {attempt.result}
-            </span>
+            {/* WHO was called, first and unmuted. It is the question a ladder is read to answer:
+                the outcome only means something once you know which source produced it. */}
+            <span className="app-rail__target">{targetOf(attempt, handover)}</span>
 
-            <span className="app-rail__facts">
-              {handover && <span className="app-rail__handover">failover · </span>}
-              {factsFor(attempt)}
+            <span className={`app-rail__outcome app-rail__outcome--${attemptTone(attempt.result)}`}>
+              {attempt.result}
+              <span className="app-rail__cost"> · {costOf(attempt)}</span>
             </span>
           </li>
         );
@@ -150,21 +159,25 @@ function AttemptRail({ attempts }) {
   );
 }
 
-/**
- * The one line under each dot: who was asked, and what it cost.
- *
- * A SHORT_CIRCUITED attempt says "not called" in words rather than showing a dash. Its latency is
- * 0 because no call was made, and both "0 ms" and "—" leave the reader to work out that an empty
- * dot means the breaker skipped it — which is exactly the question this label exists to answer.
- */
-function factsFor(attempt) {
-  const agency = attempt.agency ?? 'unknown';
-  if (attempt.result === 'SHORT_CIRCUITED') return `${agency} · not called`;
+/** The source this attempt was aimed at, and — when it changes — that the chain moved on. */
+function targetOf(attempt, handover) {
+  const agency = attempt.agency ?? 'unknown source';
+  return handover ? `${agency} · fallback` : agency;
+}
 
-  const facts = [agency];
+/**
+ * What the attempt cost.
+ *
+ * A SHORT_CIRCUITED attempt says "not called" in words rather than showing a dash or "0 ms". Its
+ * latency is zero because no request left the module, and a dash leaves the reader to work out
+ * why — which is exactly the question this label exists to answer.
+ */
+function costOf(attempt) {
+  if (attempt.result === 'SHORT_CIRCUITED') return 'not called';
+  const facts = [];
   if (attempt.confidence != null) facts.push(`confidence ${attempt.confidence}`);
   if (attempt.latencyMs != null) facts.push(`${attempt.latencyMs} ms`);
-  return facts.join(' · ');
+  return facts.join(' · ') || 'no timing recorded';
 }
 
 /** The ladder in one sentence, so the shape is readable before any of the rows are. */
