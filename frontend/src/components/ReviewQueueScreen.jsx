@@ -153,7 +153,8 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
               setActionError(null);
               setActionMessage(null);
             }}
-            footnote={`oldest first · page ${page} of ${totalPages}`}
+            footnote={`page ${page} of ${totalPages}`}
+            footnoteOnly
             empty={
               <EmptyState title="Queue clear">
                 No cases are waiting for an analyst decision.

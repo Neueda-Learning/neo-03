@@ -235,6 +235,7 @@ public class ApplicationService {
 
         record.setStatus(decision == Decision.ACCEPTED ? "VERIFIED" : "FAILED");
         record.setDecisionSource("MANUAL");
+        record.markUpdatedAt(decidedAt);
         orchestrator.applicationStatusUpdate(record.getApplicationId(), decision, comment);
     }
 

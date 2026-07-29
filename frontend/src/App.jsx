@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
+import { AppShell, SideBrand, SideNav, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import ReviewQueueScreen from './components/ReviewQueueScreen.jsx';
 import { api } from './api.js';
@@ -94,21 +94,10 @@ export default function App() {
             meta={info ? `${info.serviceId} · ${info.domain}` : undefined}
           />
           <SideNav items={SCREENS} active={screen} onSelect={setScreen} />
-          {/* Health and refresh lived in the top bar; with the bar gone they belong beside the
-              menu rather than inside it — a menu item that is not a screen is a trap. */}
+          {/* Health belongs beside the menu rather than inside it — a menu item that is not a
+              screen is a trap. */}
           <div className="app-side-status">
             <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                reload();
-                reloadReviewQueue();
-                refreshHealth();
-              }}
-            >
-              Refresh
-            </Button>
           </div>
         </>
       }

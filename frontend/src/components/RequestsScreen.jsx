@@ -8,7 +8,6 @@ import {
   EmptyState,
   Grid,
   MetricTile,
-  PageHeader,
   SearchInput,
   Toolbar,
 } from '../design-system';
@@ -100,24 +99,12 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
           <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
         ),
     },
-    { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
+    { key: 'createdAt', header: 'Received', render: (r) => time(r.createdAt) },
+    { key: 'updatedAt', header: 'Reviewed', render: (r) => (r.updatedAt ? time(r.updatedAt) : '-') },
   ];
 
   return (
     <>
-      <PageHeader
-        title="Applications"
-        lede="everything the orchestrator has sent this module, and what it answered · newest first"
-        meta={
-          info
-            ? `${info.serviceId} · ${info.domain} · v${info.version}` +
-              (info.mockedDependencies?.length
-                ? ` · mocking ${info.mockedDependencies.join(', ')}`
-                : ' · nothing mocked')
-            : undefined
-        }
-      />
-
       {error && (
         <Alert tone="negative" title="Could not load applications">
           {error} — the backend may still be starting. The list retries every two seconds.
@@ -141,12 +128,14 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
       </Toolbar>
 
       <DataTable
+        className="app-requests-table"
         columns={columns}
         rows={pagedMatches}
         maxRows={null}
         total={matches.length}
         rowKey={(r) => r.kycId ?? r.applicationId}
-        footnote={`newest first · page ${page} of ${totalPages}`}
+        footnote={`page ${page} of ${totalPages}`}
+        footnoteOnly
         empty={
           <EmptyState
             title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}

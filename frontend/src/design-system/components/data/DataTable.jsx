@@ -27,6 +27,7 @@ export function DataTable({
   renderExpanded,
   empty,
   footnote,
+  footnoteOnly = false,
   rowTone,
   className,
   ...rest
@@ -37,11 +38,13 @@ export function DataTable({
   if (visible.length === 0) return empty ?? null;
 
   const capped = matches > visible.length;
-  const parts = [
-    `${matches} ${matches === 1 ? 'match' : 'matches'}`,
-    footnote,
-    capped && `showing at most ${visible.length} — refine your search to narrow further`,
-  ].filter(Boolean);
+  const parts = footnoteOnly
+    ? [footnote].filter(Boolean)
+    : [
+        `${matches} ${matches === 1 ? 'match' : 'matches'}`,
+        footnote,
+        capped && `showing at most ${visible.length} — refine your search to narrow further`,
+      ].filter(Boolean);
 
   return (
     <div className={className}>
