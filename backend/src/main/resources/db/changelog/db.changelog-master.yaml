@@ -14,3 +14,5 @@ databaseChangeLog:
       file: db/changelog/changes/005-add-decision-source-to-kyc-record.yaml
   - include:
       file: db/changelog/changes/006-widen-issuing-country.yaml
+  - include:
+      file: db/changelog/changes/007-add-updated-at-to-kyc-record.yaml

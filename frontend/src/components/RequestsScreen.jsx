@@ -100,7 +100,8 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
           <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
         ),
     },
-    { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
+    { key: 'createdAt', header: 'Received', render: (r) => time(r.createdAt) },
+    { key: 'updatedAt', header: 'Reviewed', render: (r) => (r.updatedAt ? time(r.updatedAt) : '-') },
   ];
 
   return (
@@ -141,6 +142,7 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
       </Toolbar>
 
       <DataTable
+        className="app-requests-table"
         columns={columns}
         rows={pagedMatches}
         maxRows={null}
