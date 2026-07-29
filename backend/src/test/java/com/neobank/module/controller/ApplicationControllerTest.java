@@ -179,15 +179,13 @@ class ApplicationControllerTest {
                 "PL",
                 LocalDate.parse("2031-02-28"),
                 Instant.parse("2026-07-20T09:12:00Z"),
-                // updatedAt. KycRecordView gained this field in 007-add-updated-at-to-kyc-record;
-                // the call was still passing the old ten arguments, so the module did not compile.
-                Instant.parse("2026-07-20T09:40:00Z"))));
+                Instant.parse("2026-07-21T10:15:00Z"))));
 
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/applications"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].applicationId").value("SIM-01"))
                 .andExpect(jsonPath("$[0].decisionSource").value("MANUAL"))
                 .andExpect(jsonPath("$[0].createdAt").value("2026-07-20T09:12:00Z"))
-                .andExpect(jsonPath("$[0].updatedAt").value("2026-07-20T09:40:00Z"));
+                .andExpect(jsonPath("$[0].updatedAt").value("2026-07-21T10:15:00Z"));
     }
 }
