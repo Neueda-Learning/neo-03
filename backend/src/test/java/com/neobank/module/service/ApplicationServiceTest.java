@@ -16,6 +16,8 @@ import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
+import com.neobank.module.model.ReviewFail;
+import com.neobank.module.model.ReviewScore;
 import com.neobank.module.model.ThirdPartyAttempt;
 import com.neobank.module.repository.KycRecordRepository;
 import com.neobank.module.repository.ReviewFailRepository;
@@ -196,6 +198,14 @@ class ApplicationServiceTest {
             assertThat(attempt.getConfidence()).isEqualTo(75);
         });
 
+        ArgumentCaptor<ReviewScore> review = ArgumentCaptor.forClass(ReviewScore.class);
+        verify(reviewScores).save(review.capture());
+        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
+        assertThat(review.getValue().getConfidence()).isEqualTo(75);
+        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
+        assertThat(review.getValue().getManualReviewComment()).isNull();
+        verify(reviewFails, never()).save(any());
+
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-09", Decision.REFERRED,
                 "passport requires manual review on attempt 1 (confidence 75)");
@@ -219,6 +229,13 @@ class ApplicationServiceTest {
             assertThat(attempt.getResult()).isEqualTo("UNAVAILABLE");
             assertThat(attempt.getConfidence()).isNull();
         });
+
+        ArgumentCaptor<ReviewFail> review = ArgumentCaptor.forClass(ReviewFail.class);
+        verify(reviewFails).save(review.capture());
+        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
+        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
+        assertThat(review.getValue().getManualReviewComment()).isNull();
+        verify(reviewScores, never()).save(any());
 
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-06",

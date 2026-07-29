@@ -122,9 +122,15 @@ public class ApplicationService {
 
             KycAssessment assessment = assess(request);
             kycRecords.save(assessment.record());
-                if (!assessment.attempts().isEmpty()) {
+            if (!assessment.attempts().isEmpty()) {
                 thirdPartyAttempts.saveAll(assessment.attempts());
-                }
+            }
+            if (assessment.reviewFail() != null) {
+                reviewFails.save(assessment.reviewFail());
+            }
+            if (assessment.reviewScore() != null) {
+                reviewScores.save(assessment.reviewScore());
+            }
 
             orchestrator.applicationStatusUpdate(
                     applicationId, assessment.decision(), assessment.comment());
@@ -228,7 +234,7 @@ public class ApplicationService {
 
         VerificationOutcome outcome = expiresTooSoon
                 ? new VerificationOutcome("FAILED", Decision.REJECTED,
-                "identity document expires in less than 6 months", List.of())
+                "identity document expires in less than 6 months", List.of(), null)
                 : verifyIdentityDocument(kycId, documentType);
 
         KycRecord record = new KycRecord(
@@ -241,7 +247,16 @@ public class ApplicationService {
                 required(document.issuingCountry(),
                         "application.identityDocument.issuingCountry"),
                 expiryDate);
-        return new KycAssessment(record, outcome.decision(), outcome.comment(), outcome.attempts());
+        ReviewFail reviewFail = outcome.decision() == Decision.REFERRED
+                && outcome.reviewConfidence() == null
+                ? new ReviewFail(UUID.randomUUID().toString(), kycId, null, "REVIEW", null)
+                : null;
+        ReviewScore reviewScore = outcome.reviewConfidence() == null
+                ? null
+                : new ReviewScore(UUID.randomUUID().toString(), kycId, null,
+                outcome.reviewConfidence(), "REVIEW", null);
+        return new KycAssessment(record, outcome.decision(), outcome.comment(), outcome.attempts(),
+                reviewFail, reviewScore);
     }
 
     private VerificationOutcome verifyIdentityDocument(String kycId, String documentType) {
@@ -256,7 +271,8 @@ public class ApplicationService {
                     "VERIFIED",
                     Decision.ACCEPTED,
                     "identity document verified",
-                    List.of());
+                    List.of(),
+                    null);
         };
     }
 
@@ -283,7 +299,8 @@ public class ApplicationService {
                     Decision.ACCEPTED,
                     "%s verified on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    null);
             }
             case REVIEW -> {
                 return new VerificationOutcome(
@@ -291,7 +308,8 @@ public class ApplicationService {
                     Decision.REFERRED,
                     "%s requires manual review on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    confidence);
             }
             case REJECTED -> {
                 return new VerificationOutcome(
@@ -299,7 +317,8 @@ public class ApplicationService {
                     Decision.REJECTED,
                     "%s verification failed on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    null);
             }
             case UNAVAILABLE -> {
                 if (attemptNumber < MAX_THIRD_PARTY_ATTEMPTS) {
@@ -314,7 +333,8 @@ public class ApplicationService {
                 Decision.REFERRED,
                 "%s verification unavailable after %d attempts; manual review required".formatted(
                         documentType.toLowerCase(Locale.ROOT), MAX_THIRD_PARTY_ATTEMPTS),
-                attempts);
+                attempts,
+                null);
     }
 
     private void backoff(int attemptNumber) {
@@ -387,13 +407,16 @@ public class ApplicationService {
     private record VerificationOutcome(String status,
                                        Decision decision,
                                        String comment,
-                                       List<ThirdPartyAttempt> attempts) {
+                                       List<ThirdPartyAttempt> attempts,
+                                       Integer reviewConfidence) {
     }
 
     private record KycAssessment(KycRecord record,
                                  Decision decision,
                                  String comment,
-                                 List<ThirdPartyAttempt> attempts) {
+                                 List<ThirdPartyAttempt> attempts,
+                                 ReviewFail reviewFail,
+                                 ReviewScore reviewScore) {
     }
 
     private record QueueCandidate(
