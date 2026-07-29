@@ -96,11 +96,13 @@ export function clockTime(iso) {
 /**
  * The wait between two attempts, in seconds.
  *
- * Returns null for the first attempt of a ladder — there is nothing to have waited after — so the
- * caller can leave the gap out rather than print a misleading "+0.0s".
+ * Returns null for the first attempt of a ladder — nothing precedes it — and ALSO for a gap that
+ * rounds to zero. The fallback is tried immediately after the primary's budget is spent, with no
+ * backoff at all, and the few milliseconds between those two rows are the call returning, not a
+ * wait. Rendering "0.0s" there would put a measured-looking number on a decision never taken.
  */
 export function gapSeconds(previousIso, iso) {
   if (!previousIso || !iso) return null;
   const gap = (new Date(iso) - new Date(previousIso)) / 1000;
-  return gap > 0 ? gap.toFixed(1) : null;
+  return gap >= 0.05 ? gap.toFixed(1) : null;
 }

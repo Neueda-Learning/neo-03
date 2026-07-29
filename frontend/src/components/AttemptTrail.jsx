@@ -6,7 +6,6 @@ import {
   Spinner,
   Stack,
   Tag,
-  Timeline,
 } from '../design-system';
 import { attemptTone, agencyRole, clockTime, gapSeconds, statusTone } from '../status';
 
@@ -18,8 +17,8 @@ import { attemptTone, agencyRole, clockTime, gapSeconds, statusTone } from '../s
  * because a REVIEW caused by a doubtful applicant and a REVIEW caused by a dead provider look
  * identical on the board, and they are somebody else's problem in each case.</p>
  *
- * Composed entirely from existing design-system pieces: no new components, no new CSS. The row it
- * sits in is styled by `.ds-table__detail`, which the design system already ships.
+ * Built from design-system components plus one app-owned shape, the horizontal rail below. The row
+ * it sits in is styled by `.ds-table__detail`, which the design system already ships.
  */
 export function AttemptTrail({ record, attempts, loading, error, thresholds }) {
   if (loading) {
@@ -82,9 +81,79 @@ export function AttemptTrail({ record, attempts, loading, error, thresholds }) {
         </Stack>
       )}
 
-      <Timeline items={attempts.map((attempt, index) => toItem(attempt, attempts[index - 1]))} />
+      <AttemptRail attempts={attempts} />
     </Stack>
   );
+}
+
+/**
+ * The ladder as dots on a horizontal line — left to right, in the order the calls went out.
+ *
+ * <p>A row of dots reads as one shape: you see "three then one, and the last is green" before
+ * reading a single word, which is the question the panel exists to answer. The vertical list this
+ * replaced showed the same facts but made you assemble the shape yourself.</p>
+ *
+ * <p><b>Every dot is labelled.</b> The design system's own {@code StepTrail} is a row of dots with
+ * hover titles, which is right for a whole journey in a table cell and wrong here — the latency
+ * and the wait between attempts are the point, and a fact you have to hover to find is a fact
+ * most people never see. So this is the app's own component, built from {@code --ds-*} tokens
+ * only, which is what DESIGN.md §8 asks you to do when the system does not have the shape.</p>
+ *
+ * <p>The connector carries the wait, so the backoff is drawn between the attempts it separates
+ * rather than listed under one of them.</p>
+ */
+function AttemptRail({ attempts }) {
+  return (
+    <ol className="app-rail" aria-label="Provider attempts, in order">
+      {attempts.map((attempt, index) => {
+        const previous = attempts[index - 1];
+        const gap = gapSeconds(previous?.requestedAt, attempt.requestedAt);
+        const role = agencyRole(attempt.agency);
+        // Where the primary's budget ran out and the fallback was tried. It is the only visible
+        // record of a failover — the backend's flag for it is transient and never stored.
+        const handover = previous && agencyRole(previous.agency) !== role;
+
+        return (
+          <li className="app-rail__step" key={attempt.attemptNumber}>
+            {index > 0 && (
+              <span className="app-rail__link" aria-hidden="true">
+                <span className="app-rail__wait">{gap ? `${gap}s` : ''}</span>
+              </span>
+            )}
+
+            {/* The dot is a mark, not a label — the number and the result word sit under it, so
+                nothing here depends on reading a colour, and no text has to survive being placed
+                on a strong accent fill. */}
+            <span className={`app-rail__dot app-rail__dot--${attemptTone(attempt.result)}`} />
+
+            <span className="app-rail__number">#{attempt.attemptNumber}</span>
+            <span className={`app-rail__result app-rail__result--${attemptTone(attempt.result)}`}>
+              {attempt.result}
+            </span>
+
+            <span className="app-rail__agency">
+              {handover && <span className="app-rail__handover">failover · </span>}
+              {attempt.agency ?? 'unknown'}
+            </span>
+
+            <span className="app-rail__facts">{factsFor(attempt)}</span>
+            <span className="app-rail__when">{clockTime(attempt.requestedAt)}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function factsFor(attempt) {
+  const facts = [];
+  if (attempt.confidence != null) facts.push(`confidence ${attempt.confidence}`);
+  // A SHORT_CIRCUITED attempt has a latency of 0 because no call was made. Printing "0 ms" would
+  // read as an impossibly fast provider rather than an absent one.
+  if (attempt.result !== 'SHORT_CIRCUITED' && attempt.latencyMs != null) {
+    facts.push(`${attempt.latencyMs} ms`);
+  }
+  return facts.join(' · ') || '—';
 }
 
 /** The ladder in one sentence, so the shape is readable before any of the rows are. */
@@ -114,46 +183,4 @@ function describeBands(confidence, thresholds) {
       : confidence <= rejectThreshold ? 'at or below reject'
         : 'between the thresholds — a human decides';
   return `confidence ${confidence} · reject ≤${rejectThreshold} · accept ≥${acceptThreshold} · ${band}`;
-}
-
-function toItem(attempt, previous) {
-  const role = agencyRole(attempt.agency);
-  const gap = gapSeconds(previous?.requestedAt, attempt.requestedAt);
-
-  const facts = [];
-  if (attempt.confidence != null) facts.push(`confidence ${attempt.confidence}`);
-  // A SHORT_CIRCUITED attempt has a latency of 0 because no call was made. Printing "0 ms" would
-  // read as an impossibly fast provider rather than an absent one.
-  if (attempt.result !== 'SHORT_CIRCUITED' && attempt.latencyMs != null) {
-    facts.push(`${attempt.latencyMs} ms`);
-  }
-  if (gap) facts.push(`waited ${gap}s`);
-
-  return {
-    id: attempt.attemptNumber,
-    tone: attemptTone(attempt.result),
-    // The outcome word stays exactly as the contract spells it — never prettified to
-    // "Short circuited". It is the same token that is in the database and the logs.
-    title: (
-      <Stack gap={2} row>
-        <Badge tone={attemptTone(attempt.result)} size="sm">{attempt.result}</Badge>
-        <span>{attempt.agency ?? 'unknown source'}{role ? ` · ${role}` : ''}</span>
-      </Stack>
-    ),
-    when: clockTime(attempt.requestedAt),
-    detail: (
-      <Stack gap={1}>
-        {facts.length > 0 && <span>{facts.join(' · ')}</span>}
-        {attempt.comment && <span>{attempt.comment}</span>}
-        {/* Wrapped in a row Stack so the Tag hugs its text. A Tag placed directly in a column
-            Stack is stretched to the full width by flex's default align-items, which turns a
-            short machine token into a full-width bar that reads like an input field. */}
-        {attempt.providerRef && (
-          <Stack gap={2} row>
-            <Tag>{attempt.providerRef}</Tag>
-          </Stack>
-        )}
-      </Stack>
-    ),
-  };
 }

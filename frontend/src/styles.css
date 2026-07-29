@@ -205,3 +205,126 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * The attempt rail — every provider call as a dot on a horizontal line.
+ *
+ * App-owned, not a design-system component: the system's StepTrail is a row of dots with hover
+ * titles, which is right for a whole journey in a table cell and wrong for this, where the latency
+ * and the wait between calls are the point and a hover-only fact is one most people never see.
+ * DESIGN.md §8 sanctions exactly this — build it in your own components, styled with --ds-*
+ * variables ONLY. There is not a raw colour or a raw length below.
+ * ------------------------------------------------------------------------------------------- */
+
+.app-rail {
+  display: flex;
+  align-items: flex-start;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* A ladder is at most four steps, but a narrow window should scroll rather than crush them. */
+  overflow-x: auto;
+}
+
+.app-rail__step {
+  position: relative;
+  /* min-width, not a wide basis: the rail lives in a table cell, and a hard floor per step makes
+   * the CELL wide, which makes the TABLE wide, which pushes the Details button that opened this
+   * panel off the right edge behind a scrollbar. Four steps at 5rem fit inside the board. */
+  flex: 1 1 0;
+  min-width: 5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-1);
+  text-align: center;
+  padding: 0 var(--ds-space-2);
+}
+
+/* The line into this step, drawn from the previous dot's centre to this one's. `right: 50%` with
+ * `width: 100%` spans exactly one step, so the rail stays joined however many attempts there are
+ * and however the flex basis resolves. */
+.app-rail__link {
+  position: absolute;
+  top: calc(var(--ds-space-2) - var(--ds-border-width));
+  right: 50%;
+  width: 100%;
+  height: var(--ds-border-width);
+  background: var(--ds-color-border-strong);
+}
+
+/* The wait sits ON the connector, because the backoff belongs between two attempts rather than
+ * under either of them. The background breaks the line so the text is never struck through. */
+.app-rail__wait {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 var(--ds-space-1);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-2xs);
+  white-space: nowrap;
+}
+
+.app-rail__dot {
+  width: var(--ds-space-4);
+  height: var(--ds-space-4);
+  border-radius: var(--ds-radius-pill);
+  border: var(--ds-border-width) solid transparent;
+  background: var(--ds-step-accent, var(--ds-color-border));
+  /* Sits above the connector so the line appears to run behind it. */
+  position: relative;
+  z-index: 1;
+}
+
+.app-rail__dot--positive { --ds-step-accent: var(--ds-tone-positive-accent); }
+.app-rail__dot--warning  { --ds-step-accent: var(--ds-tone-warning-accent); }
+.app-rail__dot--negative { --ds-step-accent: var(--ds-tone-negative-accent); }
+.app-rail__dot--info     { --ds-step-accent: var(--ds-tone-info-accent); }
+/* Hollow, matching StepTrail: nothing was called, so nothing is filled in. */
+.app-rail__dot--neutral {
+  --ds-step-accent: transparent;
+  border-color: var(--ds-color-border-strong);
+}
+
+.app-rail__number {
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-2xs);
+}
+
+/* The outcome word, in the tone's INK rather than its accent. Accent is the mark's colour and is
+ * not held to a text contrast ratio; ink is. */
+.app-rail__result {
+  font-size: var(--ds-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  word-break: break-word;
+}
+
+.app-rail__result--positive { color: var(--ds-tone-positive-ink); }
+.app-rail__result--warning  { color: var(--ds-tone-warning-ink); }
+.app-rail__result--negative { color: var(--ds-tone-negative-ink); }
+.app-rail__result--info     { color: var(--ds-tone-info-ink); }
+.app-rail__result--neutral  { color: var(--ds-tone-neutral-ink); }
+
+.app-rail__agency {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-text);
+}
+
+/* The only visible record that the primary's budget ran out — the backend's failover flag is
+ * transient and never stored. */
+.app-rail__handover {
+  color: var(--ds-tone-warning-ink);
+  font-weight: 600;
+}
+
+.app-rail__facts,
+.app-rail__when {
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+}
