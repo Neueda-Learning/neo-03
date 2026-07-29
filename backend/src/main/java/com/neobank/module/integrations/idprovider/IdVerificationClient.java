@@ -1,13 +1,13 @@
 package com.neobank.module.integrations.idprovider;
 
 import com.neobank.module.integrations.orchestrator.Application;
-import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -98,22 +98,45 @@ public class IdVerificationClient {
     }
 
     /**
-     * Slow and absent are different problems with different owners, so they are told apart here
-     * rather than lumped into one "unreachable".
+     * <h3>Slow and absent are different problems with different owners.</h3>
      *
-     * <p>The cause chain is walked because Spring wraps the real I/O exception, and which one you
-     * get depends on the {@code ClientHttpRequestFactory} underneath — the JDK client throws
-     * {@link HttpTimeoutException}, the older Simple factory throws {@link SocketTimeoutException}.
-     * Checking for both means swapping the factory does not silently reclassify every timeout as a
-     * refusal.</p>
+     * <p>"Refused" sends an operator to check whether the provider is up. If it <em>is</em> up and
+     * merely wedged, that is an afternoon lost to the wrong question — so these are told apart
+     * here rather than lumped into one "unreachable".</p>
+     *
+     * <h3>Why this walks the chain, and why it lists four types for one condition</h3>
+     *
+     * <p>Spring wraps the real I/O failure, so the top-level exception says nothing. Worse, the
+     * JDK's HTTP client raises <b>two different chains for the very same read timeout</b>, and
+     * which one you get is not deterministic:</p>
+     *
+     * <pre>
+     *   ResourceAccessException -> java.net.http.HttpTimeoutException
+     *   ResourceAccessException -> java.io.IOException -> java.util.concurrent.TimeoutException
+     * </pre>
+     *
+     * <p>Both were observed against the same stalling socket, minutes apart. Handling only the
+     * first left the second falling through to the default — which reported a hung provider as
+     * REFUSED perhaps half the time. A flaky diagnosis is worse than a consistently wrong one:
+     * you cannot even learn to distrust it. {@link SocketTimeoutException} is listed too because
+     * it is what the older {@code SimpleClientHttpRequestFactory} throws, so swapping the factory
+     * back does not silently reclassify every timeout.</p>
+     *
+     * <p><b>The default is TIMEOUT, not REFUSED</b>, and that is deliberate. Reaching the end of
+     * the chain means we do not recognise the failure. "No answer in time" is then merely
+     * imprecise — it is true of everything that lands here. "Nothing was listening" would be an
+     * assertion we have not earned, and it is the one that misdirects the person reading it.</p>
      */
     private AttemptResult classify(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof HttpConnectTimeoutException
                     || cause instanceof HttpTimeoutException
-                    || cause instanceof SocketTimeoutException) {
+                    || cause instanceof SocketTimeoutException
+                    || cause instanceof TimeoutException) {
                 return AttemptResult.TIMEOUT;
             }
+            // Only this one earns REFUSED: the OS actively rejected the connection, so we know
+            // nothing was accepting on that port.
             if (cause instanceof ConnectException) {
                 return AttemptResult.REFUSED;
             }
@@ -121,7 +144,7 @@ public class IdVerificationClient {
                 break;
             }
         }
-        return error.getCause() instanceof IOException ? AttemptResult.REFUSED : AttemptResult.TIMEOUT;
+        return AttemptResult.TIMEOUT;
     }
 
     /**

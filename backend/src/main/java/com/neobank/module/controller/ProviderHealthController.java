@@ -34,12 +34,10 @@ public class ProviderHealthController {
 
     @GetMapping("/api/v1/provider/health")
     public Map<String, Object> providerHealth() {
-        Map<String, CircuitBreaker> breakers = new LinkedHashMap<>();
-        gateway.breakers().forEach((agency, breaker) -> breakers.put(agency.name(), breaker));
-
+        Map<Agency, CircuitBreaker> breakers = gateway.breakers();
         Map<String, Object> sources = new LinkedHashMap<>();
         for (Agency agency : Agency.values()) {
-            CircuitBreaker breaker = gateway.breakers().get(agency);
+            CircuitBreaker breaker = breakers.get(agency);
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("role", agency == Agency.NATIONAL ? "PRIMARY" : "FALLBACK");
             entry.put("circuit", breaker.state().name());
