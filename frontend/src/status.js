@@ -106,3 +106,37 @@ export function gapSeconds(previousIso, iso) {
   const gap = (new Date(iso) - new Date(previousIso)) / 1000;
   return gap >= 0.05 ? gap.toFixed(1) : null;
 }
+
+/**
+ * Which band a confidence score fell into — the module's own three-way decision.
+ *
+ * ONE function, used for both the colour of the bar and the sentence under it, so the two can
+ * never tell different stories about the same number. Returns null when the thresholds have not
+ * loaded from /info yet: a band asserted without them would be a guess, and guessing green on a
+ * failing score is the worst direction to guess in.
+ */
+export function confidenceBand(confidence, thresholds) {
+  if (confidence == null || !thresholds) return null;
+  if (confidence >= thresholds.acceptThreshold) return "accept";
+  if (confidence <= thresholds.rejectThreshold) return "reject";
+  return "review";
+}
+
+/**
+ * Green, yellow, red — the reading everyone brings to a score out of a hundred.
+ *
+ * The middle band is INFO and not WARNING, which looks wrong and is deliberate: under the glass
+ * theme `--ds-tone-warning-accent` is #3f7cbe, a BLUE, and the yellow in the palette lives on
+ * `--ds-tone-info-accent` (#a8bf1f, volt). Tone names in this system are slots in a palette, not
+ * colour names, and the slot holding yellow here is info.
+ *
+ * The cost is that the REVIEW badge above the bar stays blue, because that maps through
+ * `statusTone` to warning. Bar and badge therefore disagree on a borderline case. Aligning them
+ * properly means changing what warning IS, which is a theme edit — off limits to an app, and it
+ * would repaint every REVIEW in all ten modules.
+ */
+export const confidenceTone = toneMapper({
+  accept: TONES.POSITIVE,
+  review: TONES.INFO,
+  reject: TONES.NEGATIVE,
+});

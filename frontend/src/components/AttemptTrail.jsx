@@ -7,7 +7,15 @@ import {
   Stack,
   Tag,
 } from '../design-system';
-import { attemptTone, agencyRole, clockTime, gapSeconds, statusTone } from '../status';
+import {
+  attemptTone,
+  agencyRole,
+  clockTime,
+  confidenceBand,
+  confidenceTone,
+  gapSeconds,
+  statusTone,
+} from '../status';
 
 /**
  * The evidence behind one application's answer.
@@ -72,7 +80,10 @@ export function AttemptTrail({ record, attempts, loading, error, thresholds }) {
             data={[{
               label: 'confidence',
               value: answered.confidence,
-              tone: attemptTone('ANSWERED'),
+              // The bar is coloured by the BAND, not by the fact that somebody answered. It used
+              // to be green whenever the provider replied, so a confidence of 41 — a rejection —
+              // drew the same reassuring green as a 99.
+              tone: confidenceTone(confidenceBand(answered.confidence, thresholds)),
             }]}
             max={100}
             labelWidth="7rem"
@@ -204,9 +215,10 @@ function summarise(attempts, primaryCount, failedOver, answered) {
 function describeBands(confidence, thresholds) {
   if (!thresholds) return `confidence ${confidence}`;
   const { acceptThreshold, rejectThreshold } = thresholds;
-  const band =
-    confidence >= acceptThreshold ? 'at or above accept'
-      : confidence <= rejectThreshold ? 'at or below reject'
-        : 'between the thresholds — a human decides';
-  return `confidence ${confidence} · reject ≤${rejectThreshold} · accept ≥${acceptThreshold} · ${band}`;
+  const said = {
+    accept: 'at or above accept',
+    reject: 'at or below reject',
+    review: 'between the thresholds — a human decides',
+  }[confidenceBand(confidence, thresholds)];
+  return `confidence ${confidence} · reject ≤${rejectThreshold} · accept ≥${acceptThreshold} · ${said}`;
 }
