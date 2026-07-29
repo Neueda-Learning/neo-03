@@ -3,6 +3,7 @@ package com.neobank.module.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,7 +11,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
+import com.neobank.module.dto.KycRecordView;
 import com.neobank.module.service.ApplicationService;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -146,5 +151,39 @@ class ApplicationControllerTest {
         ArgumentCaptor<ApplicationRequest> sent = ArgumentCaptor.forClass(ApplicationRequest.class);
         verify(applications).processApplicationAsync(sent.capture());
         assertThat(sent.getValue().application().applicant().fullName()).isEqualTo("Maria Nowak");
+    }
+
+    @Test
+    void echoesANullCommandAsJsonNullRatherThanThrowing() throws Exception {
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"applicationId":"SIM-26","application":{"channel":"WEB"}}
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.command").doesNotExist());
+
+        verify(applications).processApplicationAsync(any(ApplicationRequest.class));
+    }
+
+    @Test
+    void returnsTheApplicationsBoardRows() throws Exception {
+        when(applications.findAll()).thenReturn(List.of(new KycRecordView(
+                "KYC-1",
+                "SIM-01",
+                "VERIFIED",
+                "MANUAL",
+                "Maria Nowak",
+                "PASSPORT",
+                "P1234567",
+                "PL",
+                LocalDate.parse("2031-02-28"),
+                Instant.parse("2026-07-20T09:12:00Z"))));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/applications"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].applicationId").value("SIM-01"))
+                .andExpect(jsonPath("$[0].decisionSource").value("MANUAL"))
+                .andExpect(jsonPath("$[0].createdAt").value("2026-07-20T09:12:00Z"));
     }
 }
