@@ -12,8 +12,8 @@ import {
   Toolbar,
 } from '../design-system';
 import { statusLabel, statusTone, STATUSES, time } from '../status.js';
-import { api } from '../api.js';
 import { AttemptTrail } from './AttemptTrail.jsx';
+import { useAttempts } from '../useAttempts.js';
 
 const FILTERS = ['All', ...STATUSES];
 const PAGE_SIZE = 10;
@@ -42,41 +42,8 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
 
-  // The open row, and a cache of what each one has loaded.
-  //
-  // `expandedKey` MUST hold exactly what `rowKey` below returns — DataTable compares them with
-  // ===, so storing an applicationId while rowKey yields a kycId renders nothing at all, with no
-  // error and no visual. That is the one way to get this wrong quietly.
-  const [expandedKey, setExpandedKey] = useState(null);
-  const [attemptsByKey, setAttemptsByKey] = useState({});
-  const [attemptsState, setAttemptsState] = useState({});
-
-  // Fetched once per case and kept. Attempts are immutable — the ladder is written in a single
-  // batch when the decision is made and never touched again — so re-fetching them on the board's
-  // two-second poll would be pure noise.
-  function toggleDetails(row) {
-    const key = rowKeyOf(row);
-    if (expandedKey === key) {
-      setExpandedKey(null);
-      return;
-    }
-    setExpandedKey(key);
-    if (attemptsByKey[key] || attemptsState[key]?.loading) return;
-
-    setAttemptsState((current) => ({ ...current, [key]: { loading: true } }));
-    api
-      .listAttempts(key)
-      .then((attempts) => {
-        setAttemptsByKey((current) => ({ ...current, [key]: attempts }));
-        setAttemptsState((current) => ({ ...current, [key]: { loading: false } }));
-      })
-      .catch((err) => {
-        setAttemptsState((current) => ({
-          ...current,
-          [key]: { loading: false, error: err.message },
-        }));
-      });
-  }
+  // One row open at a time, fetched on first open and kept. Shared with the review queue.
+  const attempts = useAttempts();
 
   const counts = useMemo(
     () =>
@@ -157,13 +124,13 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
       // the Status column already uses, and it gets the focus ring for free.
       render: (r) => {
         const key = rowKeyOf(r);
-        const open = expandedKey === key;
+        const open = attempts.isOpen(key);
         return (
           <button
             type="button"
             className="app-status-link"
             aria-expanded={open}
-            onClick={() => toggleDetails(r)}
+            onClick={() => attempts.toggle(key)}
           >
             {open ? 'Hide details ▾' : 'View details ▸'}
           </button>
@@ -203,13 +170,13 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
         maxRows={null}
         total={matches.length}
         rowKey={rowKeyOf}
-        expandedKey={expandedKey}
+        expandedKey={attempts.expandedKey}
         renderExpanded={(r) => (
           <AttemptTrail
             record={r}
-            attempts={attemptsByKey[rowKeyOf(r)]}
-            loading={attemptsState[rowKeyOf(r)]?.loading}
-            error={attemptsState[rowKeyOf(r)]?.error}
+            attempts={attempts.attemptsFor(rowKeyOf(r))}
+            loading={attempts.loadingFor(rowKeyOf(r))}
+            error={attempts.errorFor(rowKeyOf(r))}
             thresholds={info?.idProvider}
           />
         )}

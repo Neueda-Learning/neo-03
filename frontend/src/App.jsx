@@ -120,6 +120,7 @@ export default function App() {
           applications={requests}
           error={reviewQueueError}
           focusedKycId={focusedReviewKycId}
+          info={info}
         />
       )}
     </AppShell>
