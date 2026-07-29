@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Badge,
+  Button,
   ChipGroup,
   DataTable,
   EmptyState,
@@ -14,6 +15,7 @@ import {
 import { statusTone, STATUSES, time } from '../status.js';
 
 const FILTERS = ['All', ...STATUSES];
+const PAGE_SIZE = 10;
 
 /**
  * Everything this module has answered.
@@ -29,6 +31,7 @@ const FILTERS = ['All', ...STATUSES];
 export default function RequestsScreen({ requests, error, info }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
+  const [page, setPage] = useState(1);
 
   const counts = useMemo(
     () =>
@@ -49,6 +52,21 @@ export default function RequestsScreen({ requests, error, info }) {
         .some((value) => value.toLowerCase().includes(needle));
     });
   }, [requests, query, filter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pagedMatches = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return matches.slice(start, start + PAGE_SIZE);
+  }, [matches, page]);
 
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
@@ -105,10 +123,11 @@ export default function RequestsScreen({ requests, error, info }) {
 
       <DataTable
         columns={columns}
-        rows={matches}
+        rows={pagedMatches}
+        maxRows={null}
         total={matches.length}
-        rowKey={(r) => r.applicationId}
-        footnote="newest first"
+        rowKey={(r) => r.kycId ?? r.applicationId}
+        footnote={`newest first · page ${page} of ${totalPages}`}
         empty={
           <EmptyState
             title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}
@@ -125,6 +144,25 @@ export default function RequestsScreen({ requests, error, info }) {
           </EmptyState>
         }
       />
+
+      {matches.length > PAGE_SIZE && (
+        <div className="app-pagination" aria-label="Applications pagination">
+          <span className="app-pagination__summary">
+            Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, matches.length)} of {matches.length}
+          </span>
+          <div className="app-pagination__actions">
+            <Button disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
+              Previous
+            </Button>
+            <Button
+              disabled={page === totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
