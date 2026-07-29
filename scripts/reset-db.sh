@@ -43,7 +43,7 @@ DB_PASSWORD="${DB_PASSWORD:-apppass}"
 # ⚠️ KEEP THIS IN STEP WITH YOUR SCHEMA. When you replace demo_showcase with your own tables
 # (see model/DemoShowcase.java), list them here. A name left behind here fails the truncate with
 # "table doesn't exist", which is a confusing way to find out your cleanup script went stale.
-TABLES="demo_showcase"
+TABLES="third_party_attempts review_low_confidence review_third_party_fail kyc_record demo_showcase"
 
 die() { echo "error: $*" >&2; exit 1; }
 

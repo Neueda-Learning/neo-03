@@ -10,7 +10,7 @@ const HEALTH_MS = 10000;
 /**
  * The screens in the side menu.
  *
- * ⚠️ One real screen and three placeholders — the placeholders are there so the menu shows you
+ * ⚠️ One real screen and one placeholder — the placeholder is there so the menu shows you
  * where your own screens go, and they are `disabled` so nobody clicks into nothing. Replace them
  * with what your business topic actually needs; the operator UI is a graded deliverable, and a
  * single read-only list is not one.
@@ -18,9 +18,6 @@ const HEALTH_MS = 10000;
 const SCREENS = [
   { id: 'applications', label: 'Applications' },
   { id: 'review-queue', label: 'Review Queue' },
-  { id: 'cases', label: 'Cases', hint: 'your own table', disabled: true },
-  { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
-  { id: 'settings', label: 'Settings', hint: 'reference data', disabled: true },
 ];
 
 /**
@@ -91,6 +88,7 @@ export default function App() {
       side={
         <>
           <SideBrand
+            className="app-side-brand"
             brand={info?.team ?? 'Team'}
             product={info?.service ?? 'Module'}
             meta={info ? `${info.serviceId} · ${info.domain}` : undefined}
