@@ -234,13 +234,30 @@ public class ApplicationService {
             document.expiryDate(), "application.identityDocument.expiryDate"),
             "application.identityDocument.expiryDate");
         String documentType = required(document.type(), "application.identityDocument.type");
+        String issuingCountry = required(document.issuingCountry(),
+            "application.identityDocument.issuingCountry").trim();
         boolean expiresTooSoon = expiryDate.isBefore(LocalDate.now(clock).plusMonths(6));
         String kycId = UUID.randomUUID().toString();
 
-        VerificationOutcome outcome = expiresTooSoon
-                ? new VerificationOutcome("FAILED", Decision.REJECTED,
-                "identity document expires in less than 6 months", List.of(), null)
-                : verifyIdentityDocument(kycId, documentType);
+        VerificationOutcome outcome;
+        if (!isIsoCountryCode(issuingCountry)) {
+            outcome = new VerificationOutcome(
+                "FAILED",
+                Decision.REJECTED,
+                "application.identityDocument.issuingCountry has invalid country code: "
+                    + issuingCountry,
+                List.of(),
+                null);
+        } else if (expiresTooSoon) {
+            outcome = new VerificationOutcome(
+                "FAILED",
+                Decision.REJECTED,
+                "identity document expires in less than 6 months",
+                List.of(),
+                null);
+        } else {
+            outcome = verifyIdentityDocument(kycId, documentType);
+        }
 
         KycRecord record = new KycRecord(
                 kycId,
@@ -250,8 +267,7 @@ public class ApplicationService {
                 required(applicant.fullName(), "application.applicant.fullName"),
                 documentType,
                 required(document.documentId(), "application.identityDocument.documentId"),
-                required(document.issuingCountry(),
-                        "application.identityDocument.issuingCountry"),
+            issuingCountry,
                 expiryDate);
         ReviewFail reviewFail = outcome.decision() == Decision.REFERRED
                 && outcome.reviewConfidence() == null
@@ -385,6 +401,11 @@ public class ApplicationService {
             }
         }
         throw new IllegalArgumentException(field + " has invalid date format: " + rawValue);
+    }
+
+    private boolean isIsoCountryCode(String rawValue) {
+        return rawValue.length() == 2
+                && rawValue.chars().allMatch(character -> character >= 'A' && character <= 'Z');
     }
 
     private static <T> T required(T value, String field) {

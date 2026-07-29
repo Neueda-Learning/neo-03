@@ -34,7 +34,7 @@ public class KycRecord {
     @Column(name = "document_id", nullable = false, length = 128)
     private String documentId;
 
-    @Column(name = "issuing_country", nullable = false, length = 2)
+    @Column(name = "issuing_country", nullable = false, length = 16)
     private String issuingCountry;
 
     @Column(name = "expiry_date", nullable = false)

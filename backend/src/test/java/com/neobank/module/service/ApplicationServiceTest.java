@@ -79,12 +79,19 @@ class ApplicationServiceTest {
     }
 
     private static ApplicationRequest request(String id, String documentType, String expiryDate) {
+        return request(id, documentType, expiryDate, "GB");
+        }
+
+        private static ApplicationRequest request(String id,
+                              String documentType,
+                              String expiryDate,
+                              String issuingCountry) {
         Application application = new Application(
                 id, "MOBILE_APP", "2026-07-25T09:14:00Z",
                 new Application.Applicant("Jonas Meyer", "1979-02-14", null, null, null, null,
                         null, null, null, null, null),
                 new Application.IdentityDocument(
-                        documentType, "MEYER701794JM9AB", "GB", expiryDate),
+                documentType, "MEYER701794JM9AB", issuingCountry, expiryDate),
                 null, null,
                 new Application.Product("CREDIT_CARD_STANDARD", 2500),
                 null, null);
@@ -177,6 +184,24 @@ class ApplicationServiceTest {
                 "SIM-09",
                 Decision.ACCEPTED,
                 "passport verified on attempt 1 (confidence 94)");
+    }
+
+    @Test
+    void rejectsAnInvalidIssuingCountryBeforeTryingToPersistOrVerify() {
+        service.processApplication(request("SIM-09", "PASSPORT", "31-12-2030", "PRT"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
+        assertThat(saved.getValue().getIssuingCountry()).isEqualTo("PRT");
+
+        verify(orchestrator).applicationStatusUpdate(
+                "SIM-09",
+                Decision.REJECTED,
+                "application.identityDocument.issuingCountry has invalid country code: PRT");
+        verify(idVerificationClient, never()).verifyPassport();
+        verify(thirdPartyAttempts, never()).saveAll(any());
     }
 
     @Test
