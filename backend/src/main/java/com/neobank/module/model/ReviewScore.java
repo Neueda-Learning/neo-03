@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
-@Table(name = "review_score")
+@Table(name = "review_low_confidence")
 public class ReviewScore {
 
     @Id
@@ -30,21 +30,21 @@ public class ReviewScore {
     @Column(name = "review_result", length = 32)
     private String reviewResult;
 
-    @Column(length = 1000)
-    private String comment;
+    @Column(name = "manual_review_comment", length = 1000)
+    private String manualReviewComment;
 
     protected ReviewScore() {
         // JPA
     }
 
     public ReviewScore(String reviewScoreId, String kycId, Instant updatedAt, Integer confidence,
-                       String reviewResult, String comment) {
+                       String reviewResult, String manualReviewComment) {
         this.reviewScoreId = reviewScoreId;
         this.kycId = kycId;
         this.updatedAt = updatedAt;
         this.confidence = confidence;
         this.reviewResult = reviewResult;
-        this.comment = comment;
+        this.manualReviewComment = manualReviewComment;
     }
 
     @PrePersist
@@ -78,7 +78,13 @@ public class ReviewScore {
         return reviewResult;
     }
 
-    public String getComment() {
-        return comment;
+    public String getManualReviewComment() {
+        return manualReviewComment;
+    }
+
+    public void recordManualDecision(String reviewResult, String comment, Instant decidedAt) {
+        this.reviewResult = reviewResult;
+        this.manualReviewComment = comment;
+        this.updatedAt = decidedAt;
     }
 }

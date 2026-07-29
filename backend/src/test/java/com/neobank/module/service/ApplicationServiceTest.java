@@ -16,8 +16,12 @@ import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
+import com.neobank.module.model.ReviewFail;
+import com.neobank.module.model.ReviewScore;
 import com.neobank.module.model.ThirdPartyAttempt;
 import com.neobank.module.repository.KycRecordRepository;
+import com.neobank.module.repository.ReviewFailRepository;
+import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -39,6 +43,8 @@ class ApplicationServiceTest {
 
     private KycRecordRepository kycRecords;
     private ThirdPartyAttemptRepository thirdPartyAttempts;
+    private ReviewFailRepository reviewFails;
+    private ReviewScoreRepository reviewScores;
     private OrchestratorClient orchestrator;
     private IdVerificationClient idVerificationClient;
     private ApplicationService service;
@@ -47,6 +53,8 @@ class ApplicationServiceTest {
     void setUp() {
         kycRecords = mock(KycRecordRepository.class);
         thirdPartyAttempts = mock(ThirdPartyAttemptRepository.class);
+        reviewFails = mock(ReviewFailRepository.class);
+        reviewScores = mock(ReviewScoreRepository.class);
         orchestrator = mock(OrchestratorClient.class);
         idVerificationClient = mock(IdVerificationClient.class);
         Clock clock = Clock.fixed(Instant.parse("2026-07-28T00:00:00Z"), ZoneOffset.UTC);
@@ -54,6 +62,8 @@ class ApplicationServiceTest {
                 Runnable::run,
                 kycRecords,
                 thirdPartyAttempts,
+                reviewFails,
+                reviewScores,
                 orchestrator,
                 idVerificationClient,
                 clock);
@@ -188,6 +198,14 @@ class ApplicationServiceTest {
             assertThat(attempt.getConfidence()).isEqualTo(75);
         });
 
+        ArgumentCaptor<ReviewScore> review = ArgumentCaptor.forClass(ReviewScore.class);
+        verify(reviewScores).save(review.capture());
+        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
+        assertThat(review.getValue().getConfidence()).isEqualTo(75);
+        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
+        assertThat(review.getValue().getManualReviewComment()).isNull();
+        verify(reviewFails, never()).save(any());
+
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-09", Decision.REFERRED,
                 "passport requires manual review on attempt 1 (confidence 75)");
@@ -211,6 +229,13 @@ class ApplicationServiceTest {
             assertThat(attempt.getResult()).isEqualTo("UNAVAILABLE");
             assertThat(attempt.getConfidence()).isNull();
         });
+
+        ArgumentCaptor<ReviewFail> review = ArgumentCaptor.forClass(ReviewFail.class);
+        verify(reviewFails).save(review.capture());
+        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
+        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
+        assertThat(review.getValue().getManualReviewComment()).isNull();
+        verify(reviewScores, never()).save(any());
 
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-06",

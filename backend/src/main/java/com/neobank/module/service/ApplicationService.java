@@ -1,22 +1,36 @@
 package com.neobank.module.service;
 
 import com.neobank.module.dto.KycRecordView;
+import com.neobank.module.dto.ManualReviewDecisionRequest;
+import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
+import com.neobank.module.model.ReviewFail;
+import com.neobank.module.model.ReviewScore;
 import com.neobank.module.model.ThirdPartyAttempt;
 import com.neobank.module.repository.KycRecordRepository;
+import com.neobank.module.repository.ReviewFailRepository;
+import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,10 +56,13 @@ public class ApplicationService {
     private static final long INITIAL_BACKOFF_MILLIS = 100L;
     private static final int ACCEPT_CONFIDENCE_MIN = 92;
     private static final int REVIEW_CONFIDENCE_MIN = 61;
+    private static final int REVIEW_QUEUE_LIMIT = 10;
 
     private final Executor executor;
     private final KycRecordRepository kycRecords;
     private final ThirdPartyAttemptRepository thirdPartyAttempts;
+    private final ReviewFailRepository reviewFails;
+    private final ReviewScoreRepository reviewScores;
     private final OrchestratorClient orchestrator;
     private final IdVerificationClient idVerificationClient;
     private final Clock clock;
@@ -59,12 +76,16 @@ public class ApplicationService {
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
                               KycRecordRepository kycRecords,
                               ThirdPartyAttemptRepository thirdPartyAttempts,
+                              ReviewFailRepository reviewFails,
+                              ReviewScoreRepository reviewScores,
                               OrchestratorClient orchestrator,
                               IdVerificationClient idVerificationClient,
                               Clock clock) {
         this.executor = executor;
         this.kycRecords = kycRecords;
         this.thirdPartyAttempts = thirdPartyAttempts;
+        this.reviewFails = reviewFails;
+        this.reviewScores = reviewScores;
         this.orchestrator = orchestrator;
         this.idVerificationClient = idVerificationClient;
         this.clock = clock;
@@ -101,9 +122,15 @@ public class ApplicationService {
 
             KycAssessment assessment = assess(request);
             kycRecords.save(assessment.record());
-                if (!assessment.attempts().isEmpty()) {
+            if (!assessment.attempts().isEmpty()) {
                 thirdPartyAttempts.saveAll(assessment.attempts());
-                }
+            }
+            if (assessment.reviewFail() != null) {
+                reviewFails.save(assessment.reviewFail());
+            }
+            if (assessment.reviewScore() != null) {
+                reviewScores.save(assessment.reviewScore());
+            }
 
             orchestrator.applicationStatusUpdate(
                     applicationId, assessment.decision(), assessment.comment());
@@ -125,6 +152,75 @@ public class ApplicationService {
                 .toList();
     }
 
+    /** The earliest ten records across both review tables, not ten from each. */
+    @Transactional(readOnly = true)
+    public List<ReviewQueueView> findEarliestReviewQueue() {
+        List<QueueCandidate> candidates = Stream.concat(
+                        reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW").stream()
+                                .map(QueueCandidate::from),
+                        reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW").stream()
+                                .map(QueueCandidate::from))
+                .sorted(Comparator.comparing(QueueCandidate::createdAt)
+                        .thenComparing(QueueCandidate::source)
+                        .thenComparing(QueueCandidate::reviewId))
+                .limit(REVIEW_QUEUE_LIMIT)
+                .toList();
+
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> kycIds = candidates.stream()
+                .map(QueueCandidate::kycId)
+                .collect(Collectors.toSet());
+        Map<String, KycRecord> recordsByKycId = kycRecords.findAllById(kycIds).stream()
+                .collect(Collectors.toMap(KycRecord::getKycId, Function.identity()));
+
+        return candidates.stream()
+                .map(candidate -> toReviewQueueView(candidate, recordsByKycId))
+                .toList();
+    }
+
+    /**
+     * Stores the analyst's explanation on the review row that produced the queue entry, records
+     * the final KYC status, and reports that final outcome to the orchestrator.
+     */
+    @Transactional
+    public void recordManualReviewDecision(String kycId, ManualReviewDecisionRequest request) {
+        KycRecord record = kycRecords.findById(kycId)
+                .orElseThrow(() -> new NoSuchElementException("KYC record not found: " + kycId));
+        if (!"REVIEW".equals(record.getStatus())) {
+            throw new IllegalStateException("KYC record is not awaiting review: " + kycId);
+        }
+
+        Decision decision = Decision.valueOf(request.decision());
+        String comment = request.comment().trim();
+        Instant decidedAt = Instant.now(clock);
+        switch (request.source()) {
+            case "FAIL" -> reviewFails.findFirstByKycIdAndReviewResult(kycId, "REVIEW")
+                    .orElseThrow(() -> new NoSuchElementException("Pending failed-provider review not found: " + kycId))
+                    .recordManualDecision(decision.name(), comment, decidedAt);
+            case "SCORE" -> reviewScores.findFirstByKycIdAndReviewResult(kycId, "REVIEW")
+                    .orElseThrow(() -> new NoSuchElementException("Pending low-confidence review not found: " + kycId))
+                    .recordManualDecision(decision.name(), comment, decidedAt);
+            default -> throw new IllegalArgumentException("Unknown review source: " + request.source());
+        }
+
+        record.setStatus(decision == Decision.ACCEPTED ? "VERIFIED" : "FAILED");
+        orchestrator.applicationStatusUpdate(record.getApplicationId(), decision, comment);
+    }
+
+    private ReviewQueueView toReviewQueueView(QueueCandidate candidate,
+                                               Map<String, KycRecord> recordsByKycId) {
+        KycRecord record = recordsByKycId.get(candidate.kycId());
+        if (record == null) {
+            throw new IllegalStateException("Review record has no KYC record: " + candidate.kycId());
+        }
+        return new ReviewQueueView(record.getApplicationId(), candidate.kycId(), candidate.source(),
+                candidate.createdAt(), candidate.reviewResult(), candidate.confidence(),
+                candidate.comment());
+    }
+
     private KycAssessment assess(ApplicationRequest request) {
         Application application = required(request.application(), "application");
         Application.Applicant applicant = required(application.applicant(), "application.applicant");
@@ -138,7 +234,7 @@ public class ApplicationService {
 
         VerificationOutcome outcome = expiresTooSoon
                 ? new VerificationOutcome("FAILED", Decision.REJECTED,
-                "identity document expires in less than 6 months", List.of())
+                "identity document expires in less than 6 months", List.of(), null)
                 : verifyIdentityDocument(kycId, documentType);
 
         KycRecord record = new KycRecord(
@@ -151,7 +247,16 @@ public class ApplicationService {
                 required(document.issuingCountry(),
                         "application.identityDocument.issuingCountry"),
                 expiryDate);
-        return new KycAssessment(record, outcome.decision(), outcome.comment(), outcome.attempts());
+        ReviewFail reviewFail = outcome.decision() == Decision.REFERRED
+                && outcome.reviewConfidence() == null
+                ? new ReviewFail(UUID.randomUUID().toString(), kycId, null, "REVIEW", null)
+                : null;
+        ReviewScore reviewScore = outcome.reviewConfidence() == null
+                ? null
+                : new ReviewScore(UUID.randomUUID().toString(), kycId, null,
+                outcome.reviewConfidence(), "REVIEW", null);
+        return new KycAssessment(record, outcome.decision(), outcome.comment(), outcome.attempts(),
+                reviewFail, reviewScore);
     }
 
     private VerificationOutcome verifyIdentityDocument(String kycId, String documentType) {
@@ -166,7 +271,8 @@ public class ApplicationService {
                     "VERIFIED",
                     Decision.ACCEPTED,
                     "identity document verified",
-                    List.of());
+                    List.of(),
+                    null);
         };
     }
 
@@ -193,7 +299,8 @@ public class ApplicationService {
                     Decision.ACCEPTED,
                     "%s verified on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    null);
             }
             case REVIEW -> {
                 return new VerificationOutcome(
@@ -201,7 +308,8 @@ public class ApplicationService {
                     Decision.REFERRED,
                     "%s requires manual review on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    confidence);
             }
             case REJECTED -> {
                 return new VerificationOutcome(
@@ -209,7 +317,8 @@ public class ApplicationService {
                     Decision.REJECTED,
                     "%s verification failed on attempt %d (confidence %d)".formatted(
                         documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts);
+                    attempts,
+                    null);
             }
             case UNAVAILABLE -> {
                 if (attemptNumber < MAX_THIRD_PARTY_ATTEMPTS) {
@@ -224,7 +333,8 @@ public class ApplicationService {
                 Decision.REFERRED,
                 "%s verification unavailable after %d attempts; manual review required".formatted(
                         documentType.toLowerCase(Locale.ROOT), MAX_THIRD_PARTY_ATTEMPTS),
-                attempts);
+                attempts,
+                null);
     }
 
     private void backoff(int attemptNumber) {
@@ -297,12 +407,37 @@ public class ApplicationService {
     private record VerificationOutcome(String status,
                                        Decision decision,
                                        String comment,
-                                       List<ThirdPartyAttempt> attempts) {
+                                       List<ThirdPartyAttempt> attempts,
+                                       Integer reviewConfidence) {
     }
 
     private record KycAssessment(KycRecord record,
                                  Decision decision,
                                  String comment,
-                                 List<ThirdPartyAttempt> attempts) {
+                                 List<ThirdPartyAttempt> attempts,
+                                 ReviewFail reviewFail,
+                                 ReviewScore reviewScore) {
+    }
+
+    private record QueueCandidate(
+            String reviewId,
+            String kycId,
+            String source,
+            Instant createdAt,
+            String reviewResult,
+            Integer confidence,
+            String comment) {
+
+        private static QueueCandidate from(ReviewFail review) {
+            return new QueueCandidate(review.getReviewFailId(), review.getKycId(), "FAIL",
+                    review.getCreatedAt(), review.getReviewResult(), null,
+                    review.getManualReviewComment());
+        }
+
+        private static QueueCandidate from(ReviewScore review) {
+            return new QueueCandidate(review.getReviewScoreId(), review.getKycId(), "SCORE",
+                    review.getCreatedAt(), review.getReviewResult(), review.getConfidence(),
+                    review.getManualReviewComment());
+        }
     }
 }

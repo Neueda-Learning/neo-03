@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
+import ReviewQueueScreen from './components/ReviewQueueScreen.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -16,6 +17,7 @@ const HEALTH_MS = 10000;
  */
 const SCREENS = [
   { id: 'applications', label: 'Applications' },
+  { id: 'review-queue', label: 'Review Queue' },
   { id: 'cases', label: 'Cases', hint: 'your own table', disabled: true },
   { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
   { id: 'settings', label: 'Settings', hint: 'reference data', disabled: true },
@@ -31,6 +33,8 @@ export default function App() {
   const [screen, setScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
+  const [reviewQueue, setReviewQueue] = useState([]);
+  const [reviewQueueError, setReviewQueueError] = useState(null);
   const [health, setHealth] = useState(null);
   const [info, setInfo] = useState(null);
 
@@ -43,11 +47,24 @@ export default function App() {
     }
   }, []);
 
+  const reloadReviewQueue = useCallback(async () => {
+    try {
+      setReviewQueue(await api.listReviewQueue());
+      setReviewQueueError(null);
+    } catch (e) {
+      setReviewQueueError(e.message);
+    }
+  }, []);
+
   useEffect(() => {
     reload();
-    const id = setInterval(reload, POLL_MS);
+    reloadReviewQueue();
+    const id = setInterval(() => {
+      reload();
+      reloadReviewQueue();
+    }, POLL_MS);
     return () => clearInterval(id);
-  }, [reload]);
+  }, [reload, reloadReviewQueue]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -69,6 +86,7 @@ export default function App() {
 
   return (
     <AppShell
+      wide
       side={
         <>
           <SideBrand
@@ -86,6 +104,7 @@ export default function App() {
               size="sm"
               onClick={() => {
                 reload();
+                reloadReviewQueue();
                 refreshHealth();
               }}
             >
@@ -98,6 +117,13 @@ export default function App() {
     >
       {screen === 'applications' && (
         <RequestsScreen requests={requests} error={error} info={info} />
+      )}
+      {screen === 'review-queue' && (
+        <ReviewQueueScreen
+          queue={reviewQueue}
+          applications={requests}
+          error={reviewQueueError}
+        />
       )}
     </AppShell>
   );
