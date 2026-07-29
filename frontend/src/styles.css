@@ -248,7 +248,15 @@
  * the text. A structural gap cannot fail that way on any background. */
 .app-rail__link {
   position: absolute;
-  top: calc(var(--ds-space-2) - var(--ds-border-width));
+  /* Anchor the connector's CENTRE to the dot's centre, not its top edge.
+   *
+   * Positioning by `top` looks equivalent and is not: this element's height is whatever its
+   * tallest child is — 15.5px with a wait label in it, 1px without — so a fixed top put the rule
+   * 6.8px BELOW the dots on the segments that carry a label, and on the centre for the one that
+   * does not. Two different heights, neither of them anchored to the thing they join.
+   * Half the dot, then pull back half of itself, and the label's size stops mattering. */
+  top: calc(var(--ds-space-4) / 2);
+  transform: translateY(-50%);
   right: 50%;
   width: 100%;
   display: flex;
