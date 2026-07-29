@@ -114,30 +114,35 @@ function AttemptRail({ attempts }) {
         const handover = previous && agencyRole(previous.agency) !== role;
 
         return (
-          <li className="app-rail__step" key={attempt.attemptNumber}>
+          <li
+            className="app-rail__step"
+            key={attempt.attemptNumber}
+            // The full record, for anyone who wants the exact instant. Kept off the face of the
+            // rail because the gaps on the connectors already tell the timing story, and five
+            // stacked lines per dot buried the two facts that matter.
+            title={`Attempt ${attempt.attemptNumber} · ${clockTime(attempt.requestedAt)}`
+              + (attempt.providerRef ? ` · ${attempt.providerRef}` : '')
+              + (attempt.comment ? `\n${attempt.comment}` : '')}
+          >
             {index > 0 && (
               <span className="app-rail__link" aria-hidden="true">
                 <span className="app-rail__wait">{gap ? `${gap}s` : ''}</span>
               </span>
             )}
 
-            {/* The dot is a mark, not a label — the number and the result word sit under it, so
-                nothing here depends on reading a colour, and no text has to survive being placed
-                on a strong accent fill. */}
+            {/* The dot is a mark, not a label — the result word sits under it, so nothing here
+                depends on reading a colour, and no text has to survive being placed on a strong
+                accent fill. */}
             <span className={`app-rail__dot app-rail__dot--${attemptTone(attempt.result)}`} />
 
-            <span className="app-rail__number">#{attempt.attemptNumber}</span>
             <span className={`app-rail__result app-rail__result--${attemptTone(attempt.result)}`}>
               {attempt.result}
             </span>
 
-            <span className="app-rail__agency">
+            <span className="app-rail__facts">
               {handover && <span className="app-rail__handover">failover · </span>}
-              {attempt.agency ?? 'unknown'}
+              {factsFor(attempt)}
             </span>
-
-            <span className="app-rail__facts">{factsFor(attempt)}</span>
-            <span className="app-rail__when">{clockTime(attempt.requestedAt)}</span>
           </li>
         );
       })}
@@ -145,15 +150,21 @@ function AttemptRail({ attempts }) {
   );
 }
 
+/**
+ * The one line under each dot: who was asked, and what it cost.
+ *
+ * A SHORT_CIRCUITED attempt says "not called" in words rather than showing a dash. Its latency is
+ * 0 because no call was made, and both "0 ms" and "—" leave the reader to work out that an empty
+ * dot means the breaker skipped it — which is exactly the question this label exists to answer.
+ */
 function factsFor(attempt) {
-  const facts = [];
+  const agency = attempt.agency ?? 'unknown';
+  if (attempt.result === 'SHORT_CIRCUITED') return `${agency} · not called`;
+
+  const facts = [agency];
   if (attempt.confidence != null) facts.push(`confidence ${attempt.confidence}`);
-  // A SHORT_CIRCUITED attempt has a latency of 0 because no call was made. Printing "0 ms" would
-  // read as an impossibly fast provider rather than an absent one.
-  if (attempt.result !== 'SHORT_CIRCUITED' && attempt.latencyMs != null) {
-    facts.push(`${attempt.latencyMs} ms`);
-  }
-  return facts.join(' · ') || '—';
+  if (attempt.latencyMs != null) facts.push(`${attempt.latencyMs} ms`);
+  return facts.join(' · ');
 }
 
 /** The ladder in one sentence, so the shape is readable before any of the rows are. */

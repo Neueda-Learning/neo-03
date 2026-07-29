@@ -238,7 +238,9 @@
   align-items: center;
   gap: var(--ds-space-1);
   text-align: center;
-  padding: 0 var(--ds-space-2);
+  /* The gutter between neighbouring labels. SHORT_CIRCUITED is fifteen characters and the
+   * outcome words are the contract's, not ours to shorten, so the space has to come from here. */
+  padding: 0 var(--ds-space-3);
 }
 
 /* The line into this step, drawn from the previous dot's centre to this one's. `right: 50%` with
@@ -289,19 +291,15 @@
   border-color: var(--ds-color-border-strong);
 }
 
-.app-rail__number {
-  color: var(--ds-color-text-muted);
-  font-family: var(--ds-figure-family, var(--ds-font-mono));
-  font-size: var(--ds-text-2xs);
-}
-
 /* The outcome word, in the tone's INK rather than its accent. Accent is the mark's colour and is
  * not held to a text contrast ratio; ink is. */
 .app-rail__result {
   font-size: var(--ds-text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
-  word-break: break-word;
+  /* Break inside a word if it comes to it: the alternative is a label that silently overlaps its
+   * neighbour, and DESIGN.md forbids prettifying the outcome word to make it fit. */
+  overflow-wrap: anywhere;
 }
 
 .app-rail__result--positive { color: var(--ds-tone-positive-ink); }
@@ -310,11 +308,6 @@
 .app-rail__result--info     { color: var(--ds-tone-info-ink); }
 .app-rail__result--neutral  { color: var(--ds-tone-neutral-ink); }
 
-.app-rail__agency {
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text);
-}
-
 /* The only visible record that the primary's budget ran out — the backend's failover flag is
  * transient and never stored. */
 .app-rail__handover {
@@ -322,9 +315,9 @@
   font-weight: 600;
 }
 
-.app-rail__facts,
-.app-rail__when {
+.app-rail__facts {
   font-size: var(--ds-text-2xs);
   color: var(--ds-color-text-muted);
   font-family: var(--ds-figure-family, var(--ds-font-mono));
+  overflow-wrap: anywhere;
 }
