@@ -18,7 +18,7 @@ import jakarta.validation.constraints.NotBlank;
  * @param application   the whole application, every field, typed
  */
 public record ApplicationRequest(
-        @NotBlank String applicationId,
+    @NotBlank(message = "is required in the envelope root") String applicationId,
         String correlationId,
         String command,
         Application application) {
