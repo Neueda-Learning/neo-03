@@ -122,6 +122,7 @@ class ReviewQueueServiceTest {
                 "SCORE", "ACCEPTED", " Document checked by analyst "));
 
         assertThat(record.getStatus()).isEqualTo("VERIFIED");
+        assertThat(record.getDecisionSource()).isEqualTo("MANUAL");
         assertThat(review.getReviewResult()).isEqualTo("ACCEPTED");
         assertThat(review.getManualReviewComment()).isEqualTo("Document checked by analyst");
         assertThat(review.getUpdatedAt()).isEqualTo(Instant.parse("2026-07-28T12:00:00Z"));
@@ -141,6 +142,7 @@ class ReviewQueueServiceTest {
                 "FAIL", "REJECTED", "Identity evidence is insufficient"));
 
         assertThat(record.getStatus()).isEqualTo("FAILED");
+        assertThat(record.getDecisionSource()).isEqualTo("MANUAL");
         assertThat(review.getReviewResult()).isEqualTo("REJECTED");
         assertThat(review.getManualReviewComment()).isEqualTo("Identity evidence is insufficient");
         verify(orchestrator).applicationStatusUpdate(
@@ -176,7 +178,7 @@ class ReviewQueueServiceTest {
     }
 
     private static KycRecord recordEntity(String kycId, String applicationId) {
-        return new KycRecord(kycId, applicationId, "REVIEW", "Jonas Meyer", "PASSPORT",
+                return new KycRecord(kycId, applicationId, "REVIEW", "AUTO", "Jonas Meyer", "PASSPORT",
                 "P1234567", "GB", java.time.LocalDate.of(2029, 8, 31));
     }
 }
