@@ -8,9 +8,11 @@ import com.neobank.mockagency.dto.VerificationRequest;
 import com.neobank.mockagency.dto.VerificationResponse;
 import com.neobank.mockagency.dto.VerificationResponse.Check;
 import com.neobank.mockagency.model.Agency;
+import com.neobank.mockagency.model.AnswerMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -70,7 +72,7 @@ class AgencyServiceTest {
     @Test
     @DisplayName("The kill switch refuses, and refuses only the agency it was set on")
     void killSwitchIsPerAgency() {
-        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 0, true));
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 0, true, AnswerMode.NORMAL));
 
         assertThatThrownBy(() ->
                 agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZS1234567")))
@@ -84,7 +86,7 @@ class AgencyServiceTest {
     @Test
     @DisplayName("A 100% failure rate refuses every call")
     void totalFailureRateRefuses() {
-        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 100, false));
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 100, false, AnswerMode.NORMAL));
 
         for (int i = 0; i < 20; i++) {
             assertThatThrownBy(() ->
@@ -106,7 +108,7 @@ class AgencyServiceTest {
     @Test
     @DisplayName("Latency is applied — a slow agency really is slow")
     void latencyIsHonoured() {
-        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(300, 0, false));
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(300, 0, false, AnswerMode.NORMAL));
 
         long start = System.nanoTime();
         agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZS1234567"));
@@ -118,7 +120,7 @@ class AgencyServiceTest {
     @Test
     @DisplayName("Reset puts both agencies back and zeroes the counters")
     void resetRestoresHealthyAndClearsCounts() {
-        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(9000, 100, true));
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(9000, 100, true, AnswerMode.NORMAL));
         agencies.verify(Agency.TAX_AGENCY, request("ZS1234567"));
         assertThat(agencies.callCounts().get("tax")).isEqualTo(1);
 
@@ -152,7 +154,7 @@ class AgencyServiceTest {
     @Test
     @DisplayName("Refused calls are still counted — the control panel shows attempts, not successes")
     void refusedCallsAreCounted() {
-        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 0, true));
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY, new AgencyConfig(0, 0, true, AnswerMode.NORMAL));
 
         for (int i = 0; i < 3; i++) {
             try {
@@ -162,5 +164,61 @@ class AgencyServiceTest {
             }
         }
         assertThat(agencies.callCounts().get("national")).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("A forced mode overrides the document's own score, in every band")
+    void answerModeForcesTheOutcome() {
+        // NORMAL scores Maria at 92 — a pass. Each mode has to move her somewhere else, or it is
+        // not doing anything.
+        record Case(AnswerMode mode, int min, int max) { }
+        for (Case c : List.of(new Case(AnswerMode.ALL_PASS, 92, 100),
+                              new Case(AnswerMode.ALL_REVIEW, 61, 91),
+                              new Case(AnswerMode.ALL_FAIL, 0, 60))) {
+            agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY,
+                    new AgencyConfig(0, 0, false, c.mode()));
+
+            assertThat(agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZS1234567")).confidence())
+                    .as("%s", c.mode())
+                    .isBetween(c.min(), c.max());
+        }
+    }
+
+    @Test
+    @DisplayName("ALL_FAIL refuses on CONFIDENCE — it does not call the document a forgery")
+    void aForcedFailureIsStillAGenuineDocument() {
+        // Two different sentences: "we are not confident enough" and "this document is fake".
+        // The caller reports them as different reason codes, and only one of them is what
+        // "all fail" means.
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY,
+                new AgencyConfig(0, 0, false, AnswerMode.ALL_FAIL));
+
+        assertThat(agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZS1234567")).checks())
+                .filteredOn(check -> check.name().equals("documentGenuine"))
+                .allMatch(check -> check.passed());
+    }
+
+    @Test
+    @DisplayName("A mode does NOT rescue the corpus's always-fails document")
+    void modeDoesNotOverrideTheCorpusFailureFixture() {
+        // ZZ0000000 exists so an outage can be shown without touching a dial. A mode that made it
+        // answer would quietly break the one convention every team's scenarios rely on.
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY,
+                new AgencyConfig(0, 0, false, AnswerMode.ALL_PASS));
+
+        assertThatThrownBy(() ->
+                agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZZ0000000")))
+                .isInstanceOf(AgencyUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("The kill switch beats the mode — no answer means no answer")
+    void killSwitchBeatsAnyMode() {
+        agencies.updateConfig(Agency.NATIONAL_IDENTITY_AGENCY,
+                new AgencyConfig(0, 0, true, AnswerMode.ALL_PASS));
+
+        assertThatThrownBy(() ->
+                agencies.verify(Agency.NATIONAL_IDENTITY_AGENCY, request("ZS1234567")))
+                .isInstanceOf(AgencyUnavailableException.class);
     }
 }

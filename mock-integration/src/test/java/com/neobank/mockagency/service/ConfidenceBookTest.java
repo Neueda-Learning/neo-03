@@ -35,9 +35,11 @@ class ConfidenceBookTest {
     @DisplayName("The reject fixture scores at or below 60, and is not reported genuine")
     void rejectFixtureLandsInTheRejectBand() {
         assertThat(book.confidenceFor("BR6640281")).isEqualTo(41);
-        // A document the register scores this low is one it does not believe in. This is what
-        // makes the caller's KYC_DOCUMENT_INVALID path reachable at all.
-        assertThat(book.genuineFor("BR6640281")).isFalse();
+        // GENUINE, despite the low score. The two are separate facts, and tying them together
+        // made the caller's low-confidence rejection unreachable: the forgery gate runs first,
+        // so every score at or below the threshold came back as KYC_DOCUMENT_INVALID.
+        assertThat(book.genuineFor("BR6640281")).isTrue();
+        assertThat(book.genuineFor(ConfidenceBook.FORGED)).isFalse();
     }
 
     @Test

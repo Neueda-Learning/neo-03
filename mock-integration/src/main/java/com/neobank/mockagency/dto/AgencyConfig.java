@@ -1,5 +1,6 @@
 package com.neobank.mockagency.dto;
 
+import com.neobank.mockagency.model.AnswerMode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -40,10 +41,24 @@ public record AgencyConfig(
         Integer failureRatePct,
 
         @NotNull(message = "is required")
-        Boolean killSwitch) {
+        Boolean killSwitch,
 
-    /** Answering, promptly, every time. What every agency starts as. */
+        /**
+         * What the answer SAYS when one arrives — see {@link AnswerMode}. Orthogonal to the three
+         * dials above, which decide whether one arrives at all.
+         *
+         * <p>Optional in a request body: a caller adjusting latency should not have to restate the
+         * mode, so an absent value is read as {@code NORMAL} by {@link #mode()}.</p>
+         */
+        AnswerMode answerMode) {
+
+    /** Answering, promptly, every time, and saying what the document deserves. */
     public static AgencyConfig healthy() {
-        return new AgencyConfig(0, 0, false);
+        return new AgencyConfig(0, 0, false, AnswerMode.NORMAL);
+    }
+
+    /** Never null, so no caller has to defend against an omitted mode. */
+    public AnswerMode mode() {
+        return answerMode == null ? AnswerMode.NORMAL : answerMode;
     }
 }

@@ -2,10 +2,14 @@ package com.neobank.module.controller;
 
 import com.neobank.module.integrations.idprovider.Agency;
 import com.neobank.module.integrations.idprovider.CircuitBreaker;
+import com.neobank.module.integrations.idprovider.ProviderAdminClient;
+import com.neobank.module.integrations.idprovider.ProviderAdminClient.ProviderPreset;
 import com.neobank.module.service.ProviderGateway;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -27,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProviderHealthController {
 
     private final ProviderGateway gateway;
+    private final ProviderAdminClient providerAdmin;
 
-    public ProviderHealthController(ProviderGateway gateway) {
+    public ProviderHealthController(ProviderGateway gateway, ProviderAdminClient providerAdmin) {
         this.gateway = gateway;
+        this.providerAdmin = providerAdmin;
     }
 
     @GetMapping("/api/v1/provider/health")
@@ -54,5 +60,34 @@ public class ProviderHealthController {
         body.put("callable", sources.values().stream()
                 .anyMatch(source -> !"OPEN".equals(((Map<?, ?>) source).get("circuit"))));
         return body;
+    }
+
+    /**
+     * What the mocked agencies are currently set to.
+     *
+     * <p>Proxied rather than fetched by the browser: on AWS the mock is a container inside this
+     * task with no route of its own, so this backend is the only thing that can reach it.</p>
+     */
+    @GetMapping("/api/v1/provider/config")
+    public Map<String, Object> providerConfig() {
+        return providerAdmin.readConfig();
+    }
+
+    /**
+     * Point the mocked agencies at a preset.
+     *
+     * <p>NOT a back door: it configures a mocked dependency, it cannot set a decision, and every
+     * application still travels the whole path — dispatch, retry ladder, callback — whatever it is
+     * set to. The outcomes it produces are produced by the real rules reading a real response.</p>
+     *
+     * @param primaryOnly leaves the fallback healthy, which is the failover demo. Without it a
+     *                    {@code DOWN} preset takes both agencies out, which is the outage.
+     */
+    @PutMapping("/api/v1/provider/config")
+    public Map<String, Object> setProviderConfig(
+            @RequestParam ProviderPreset preset,
+            @RequestParam(defaultValue = "false") boolean primaryOnly) {
+        providerAdmin.apply(preset, primaryOnly);
+        return providerAdmin.readConfig();
     }
 }

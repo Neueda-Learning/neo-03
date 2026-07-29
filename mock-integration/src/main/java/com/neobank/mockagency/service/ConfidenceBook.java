@@ -42,6 +42,19 @@ public class ConfidenceBook {
      */
     public static final String ALWAYS_FAILS = "ZZ0000000";
 
+    /**
+     * The forgery fixture — the register recognises the number but says the document is not real.
+     *
+     * <p>Its own document, and NOT simply a very low score, because those are different facts. A
+     * genuine passport can score badly on a poor photograph or a moved address; a forgery can be
+     * excellent. Deriving one from the other made the caller's low-confidence rejection
+     * unreachable — every score at or below the reject threshold was reported as forged, and the
+     * forgery gate runs first.</p>
+     *
+     * <p>Numbered alongside {@link #ALWAYS_FAILS} so the two synthetic fixtures read as a pair.</p>
+     */
+    public static final String FORGED = "ZZ0000001";
+
     private static final int FLOOR = 61;
     private static final int SPREAD = 40;
 
@@ -62,7 +75,8 @@ public class ConfidenceBook {
 
             // SIM-11 · Rafael Santos. Below the reject threshold, so the FAILED band is reachable
             // end to end. Without a pin here the whole reject path is untestable through the
-            // stack, because every derived score is 61 or above.
+            // stack, because every derived score is 61 or above. GENUINE, deliberately — this is
+            // the low-confidence rejection, not the forgery.
             "BR6640281", 41,
 
             // SIM-02 · Jonas Meyer, the corpus's only DRIVING_LICENCE. Pinned high so a
@@ -87,13 +101,12 @@ public class ConfidenceBook {
     /**
      * Whether this document should be reported as genuine.
      *
-     * <p>Tied to the score rather than pinned separately: a document the register scores in the
-     * reject band is one it does not believe in. This is what makes the caller's
-     * {@code KYC_DOCUMENT_INVALID} path reachable, and it is checked BEFORE the confidence bands
-     * there — a forgery is a forgery whatever number sits beside it.</p>
+     * <p>Pinned to one document rather than derived from the score. The caller checks this BEFORE
+     * the confidence bands — a forgery is a forgery whatever number sits beside it — so deriving
+     * it from a low score meant a low score could never be reported AS a low score.</p>
      */
     public boolean genuineFor(String documentId) {
-        return confidenceFor(documentId) > 60;
+        return !FORGED.equals(documentId);
     }
 
     /** Whether this document is the corpus's "make the provider fail" fixture. */

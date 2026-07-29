@@ -5,6 +5,7 @@ import com.neobank.mockagency.dto.VerificationRequest;
 import com.neobank.mockagency.dto.VerificationResponse;
 import com.neobank.mockagency.dto.VerificationResponse.Check;
 import com.neobank.mockagency.model.Agency;
+import com.neobank.mockagency.model.AnswerMode;
 import java.time.Clock;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -65,7 +66,8 @@ public class AgencyService {
                          @Value("${agency.default-kill-switch:false}") boolean defaultKillSwitch) {
         this.confidenceBook = confidenceBook;
         this.clock = clock;
-        this.defaults = new AgencyConfig(defaultLatencyMs, defaultFailureRatePct, defaultKillSwitch);
+        this.defaults = new AgencyConfig(
+                defaultLatencyMs, defaultFailureRatePct, defaultKillSwitch, AnswerMode.NORMAL);
         reset();
     }
 
@@ -100,10 +102,18 @@ public class AgencyService {
             throw new AgencyUnavailableException(agency + " could not reach the identity register");
         }
 
-        int confidence = confidenceBook.confidenceFor(documentId);
+        // The mode overrides the document's own score, but NOT the corpus's always-fails
+        // document above: ZZ0000000 exists so the outage path can be demonstrated without
+        // touching a dial, and a mode that silently made it answer would break the one
+        // convention every team's scenarios rely on.
+        Integer forced = config.mode().forcedConfidence();
+        int confidence = forced != null ? forced : confidenceBook.confidenceFor(documentId);
+        // A mode forces a SCORE, never a forgery: "all fail" means every applicant is refused on
+        // confidence, which is a different sentence from "every document is fake".
         boolean genuine = confidenceBook.genuineFor(documentId);
 
-        log.info("{} answered a {} check — confidence {}", agency, request.document().type(), confidence);
+        log.info("{} answered a {} check — confidence {} ({})", agency, request.document().type(),
+                confidence, config.mode());
 
         return new VerificationResponse(
                 agency.refPrefix() + "-" + UUID.randomUUID().toString().substring(0, 8),
@@ -155,8 +165,8 @@ public class AgencyService {
 
     public AgencyConfig updateConfig(Agency agency, AgencyConfig config) {
         configs.put(agency, config);
-        log.info("{} dials set — latency {}ms, failureRate {}%, killSwitch {}",
-                agency, config.latencyMs(), config.failureRatePct(), config.killSwitch());
+        log.info("{} dials set — latency {}ms, failureRate {}%, killSwitch {}, mode {}",
+                agency, config.latencyMs(), config.failureRatePct(), config.killSwitch(), config.mode());
         return config;
     }
 
@@ -166,8 +176,8 @@ public class AgencyService {
             configs.put(agency, defaults);
             calls.put(agency, new AtomicLong());
         }
-        log.info("all agency dials reset — latency {}ms, failureRate {}%, killSwitch {}",
-                defaults.latencyMs(), defaults.failureRatePct(), defaults.killSwitch());
+        log.info("all agency dials reset — latency {}ms, failureRate {}%, killSwitch {}, mode {}",
+                defaults.latencyMs(), defaults.failureRatePct(), defaults.killSwitch(), defaults.mode());
     }
 
     /** Call counts per agency — how the control page shows a failover actually happening. */

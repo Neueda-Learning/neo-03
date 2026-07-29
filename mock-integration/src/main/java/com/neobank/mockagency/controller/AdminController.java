@@ -60,6 +60,7 @@ public class AdminController {
             entry.put("latencyMs", config.latencyMs());
             entry.put("failureRatePct", config.failureRatePct());
             entry.put("killSwitch", config.killSwitch());
+            entry.put("answerMode", config.mode().name());
             byAgency.put(agency.slug(), entry);
         });
         body.put("agencies", byAgency);

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, SideBrand, SideNav, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import ReviewQueueScreen from './components/ReviewQueueScreen.jsx';
+import ProviderControl from './components/ProviderControl.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -99,6 +100,10 @@ export default function App() {
           <div className="app-side-status">
             <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
           </div>
+          {/* Under the nav, not in it: it configures the mocked provider rather than moving you
+              anywhere. On AWS this is the ONLY way to reach those dials — the mock is a container
+              inside this task with no route of its own. */}
+          <ProviderControl />
         </>
       }
       footer="One of ten modules · applications arrive from the orchestrator, never from this UI"

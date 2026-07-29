@@ -52,6 +52,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.agencies.national.killSwitch").value(false))
                 .andExpect(jsonPath("$.agencies.national.latencyMs").value(0))
                 .andExpect(jsonPath("$.agencies.tax.failureRatePct").value(0))
+                .andExpect(jsonPath("$.agencies.national.answerMode").value("NORMAL"))
                 .andExpect(jsonPath("$.calls.national").value(0));
     }
 
@@ -141,5 +142,38 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/v1/admin/config"))
                 .andExpect(jsonPath("$.calls.national").value(1))
                 .andExpect(jsonPath("$.calls.tax").value(2));
+    }
+
+    @Test
+    @DisplayName("A mode set through the API changes what the next verification answers")
+    void answerModeIsSettableOverHttp() {
+        // The whole point of the module proxying this endpoint: on AWS the mock has no public
+        // route, so if it cannot be driven over HTTP it cannot be driven at all.
+        try {
+            mockMvc.perform(put("/api/v1/admin/config/national")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"latencyMs":0,"failureRatePct":0,"killSwitch":false,
+                                     "answerMode":"ALL_FAIL"}"""))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(post("/api/v1/agencies/national/verifications")
+                            .contentType(MediaType.APPLICATION_JSON).content(APPLICATION))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.confidence").value(org.hamcrest.Matchers.lessThanOrEqualTo(60)));
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    @DisplayName("An unknown mode is a 400, not a silent fall back to NORMAL")
+    void anUnknownModeIsRejected() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/config/national")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"latencyMs":0,"failureRatePct":0,"killSwitch":false,
+                                 "answerMode":"ALL_MAYBE"}"""))
+                .andExpect(status().isBadRequest());
     }
 }

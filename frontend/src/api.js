@@ -50,6 +50,15 @@ export const api = {
   // A known case with no attempts answers 200 [] — the provider was never called. Only an
   // unknown case is a 404.
   listAttempts: (kycId) => request(`/api/v1/applications/${kycId}/attempts`),
+
+  // The mocked agencies' current dials, and the control that changes them.
+  //
+  // Proxied THROUGH this module rather than called directly, because on AWS the mock is a
+  // container inside this service's ECS task with no route of its own — the backend beside it is
+  // the only thing that can reach it. Same call on a laptop and in a deployed environment.
+  providerConfig: () => request('/api/v1/provider/config'),
+  setProviderPreset: (preset, primaryOnly = false) =>
+    request(`/api/v1/provider/config?preset=${preset}&primaryOnly=${primaryOnly}`, { method: 'PUT' }),
 };
 
 // REMOVED: getApplication(id) -> GET /api/v1/applications/{id}
