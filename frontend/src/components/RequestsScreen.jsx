@@ -43,6 +43,11 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
     [requests]
   );
 
+  const totalApproved = useMemo(
+    () => requests.filter((request) => request.status === 'VERIFIED').length,
+    [requests]
+  );
+
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return requests.filter((r) => {
@@ -120,8 +125,8 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
       )}
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
-        <MetricTile label="Seen" value={requests.length} />
-        <MetricTile label="Verified" value={counts.VERIFIED ?? 0} tone="positive" />
+        <MetricTile label="Total Applications" value={requests.length} />
+        <MetricTile label="Total Approved" value={totalApproved} tone="positive" />
       </Grid>
 
       <Toolbar>
