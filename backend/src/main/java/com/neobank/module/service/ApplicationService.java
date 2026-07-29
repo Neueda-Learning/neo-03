@@ -16,6 +16,8 @@ import com.neobank.module.repository.ReviewFailRepository;
 import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
 import java.time.Clock;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -51,6 +53,7 @@ public class ApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(ApplicationService.class);
     private static final int REVIEW_QUEUE_LIMIT = 10;
+    private static final DateTimeFormatter DAY_MONTH_YEAR = DateTimeFormatter.ofPattern("dd-MM-uuuu");
 
     private final Executor executor;
     private final KycRecordRepository kycRecords;
@@ -231,6 +234,7 @@ public class ApplicationService {
         }
 
         record.setStatus(decision == Decision.ACCEPTED ? "VERIFIED" : "FAILED");
+        record.setDecisionSource("MANUAL");
         orchestrator.applicationStatusUpdate(record.getApplicationId(), decision, comment);
     }
 
@@ -250,31 +254,50 @@ public class ApplicationService {
         Application.Applicant applicant = required(application.applicant(), "application.applicant");
         Application.IdentityDocument document =
                 required(application.identityDocument(), "application.identityDocument");
-        LocalDate expiryDate = LocalDate.parse(required(
-                document.expiryDate(), "application.identityDocument.expiryDate"));
+        LocalDate expiryDate = parseDate(required(
+            document.expiryDate(), "application.identityDocument.expiryDate"),
+            "application.identityDocument.expiryDate");
         String documentType = required(document.type(), "application.identityDocument.type");
+        String issuingCountry = required(document.issuingCountry(),
+            "application.identityDocument.issuingCountry").trim();
         boolean expiresTooSoon = expiryDate.isBefore(LocalDate.now(clock).plusMonths(6));
         String kycId = UUID.randomUUID().toString();
 
-        // The expiry pre-check runs FIRST and, when it fires, the provider is never called at all.
-        // That is not an optimisation — the empty attempt list it leaves behind is the evidence
-        // that no provider fee was paid for an answer the date alone gave us.
-        VerificationOutcome outcome = expiresTooSoon
-                ? new VerificationOutcome("FAILED", Decision.REJECTED,
-                comment(ReasonCode.KYC_DOCUMENT_EXPIRED,
-                        "identity document expires in less than 6 months (" + expiryDate + ")"),
-                List.of(), null)
-                : verifyIdentityDocument(kycId, application);
+        // TWO local pre-checks, then the provider — and when either fires the provider is never
+        // called at all. That is not an optimisation: the empty attempt list each one leaves
+        // behind is the evidence that no provider fee was paid for an answer we already had.
+        VerificationOutcome outcome;
+        if (!isIsoCountryCode(issuingCountry)) {
+            // The document as presented cannot be looked up anywhere, so KYC_DOCUMENT_INVALID —
+            // the nearest of the six locked codes. Do not invent a seventh for this; ask first.
+            outcome = new VerificationOutcome(
+                    "FAILED",
+                    Decision.REJECTED,
+                    comment(ReasonCode.KYC_DOCUMENT_INVALID,
+                            "issuing country '" + issuingCountry + "' is not an ISO alpha-2 code"),
+                    List.of(),
+                    null);
+        } else if (expiresTooSoon) {
+            outcome = new VerificationOutcome(
+                    "FAILED",
+                    Decision.REJECTED,
+                    comment(ReasonCode.KYC_DOCUMENT_EXPIRED,
+                            "identity document expires in less than 6 months (" + expiryDate + ")"),
+                    List.of(),
+                    null);
+        } else {
+            outcome = verifyIdentityDocument(kycId, application);
+        }
 
         KycRecord record = new KycRecord(
                 kycId,
                 request.applicationId(),
                 outcome.status(),
+            "AUTO",
                 required(applicant.fullName(), "application.applicant.fullName"),
                 documentType,
                 required(document.documentId(), "application.identityDocument.documentId"),
-                required(document.issuingCountry(),
-                        "application.identityDocument.issuingCountry"),
+            issuingCountry,
                 expiryDate);
         ReviewFail reviewFail = outcome.decision() == Decision.REFERRED
                 && outcome.reviewConfidence() == null
@@ -370,6 +393,22 @@ public class ApplicationService {
         return provider.failedOver() ? base + " · " + ReasonCode.KYC_FAILED_OVER_TO_SECONDARY : base;
     }
 
+
+    private LocalDate parseDate(String rawValue, String field) {
+        for (DateTimeFormatter formatter : List.of(DateTimeFormatter.ISO_LOCAL_DATE, DAY_MONTH_YEAR)) {
+            try {
+                return LocalDate.parse(rawValue, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try the next supported wire format.
+            }
+        }
+        throw new IllegalArgumentException(field + " has invalid date format: " + rawValue);
+    }
+
+    private boolean isIsoCountryCode(String rawValue) {
+        return rawValue.length() == 2
+                && rawValue.chars().allMatch(character -> character >= 'A' && character <= 'Z');
+    }
 
     private static <T> T required(T value, String field) {
         if (value == null || value instanceof String string && string.isBlank()) {

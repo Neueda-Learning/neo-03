@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Badge,
+  Button,
   ChipGroup,
   DataTable,
   EmptyState,
@@ -11,9 +12,10 @@ import {
   SearchInput,
   Toolbar,
 } from '../design-system';
-import { statusTone, STATUSES, time } from '../status.js';
+import { statusLabel, statusTone, STATUSES, time } from '../status.js';
 
 const FILTERS = ['All', ...STATUSES];
+const PAGE_SIZE = 10;
 
 /**
  * Everything this module has answered.
@@ -26,29 +28,57 @@ const FILTERS = ['All', ...STATUSES];
  * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
  * DataTable — no screen re-implements them.
  */
-export default function RequestsScreen({ requests, error, info }) {
+export default function RequestsScreen({ requests, error, info, onOpenReviewQueue }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
+  const [page, setPage] = useState(1);
 
   const counts = useMemo(
     () =>
       requests.reduce((acc, r) => {
-        acc[r.status] = (acc[r.status] ?? 0) + 1;
+        const label = statusLabel(r.status, r.decisionSource);
+        acc[label] = (acc[label] ?? 0) + 1;
         return acc;
       }, {}),
+    [requests]
+  );
+
+  const totalApproved = useMemo(
+    () => requests.filter((request) => request.status === 'VERIFIED').length,
     [requests]
   );
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return requests.filter((r) => {
-      if (filter !== 'All' && r.status !== filter) return false;
+      if (filter !== 'All' && statusLabel(r.status, r.decisionSource) !== filter) return false;
       if (!needle) return true;
       return [r.applicationId, r.name, r.documentId]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(needle));
     });
   }, [requests, query, filter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pagedMatches = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return matches.slice(start, start + PAGE_SIZE);
+  }, [matches, page]);
+
+  function openReviewQueue(request) {
+    if (request.status === 'REVIEW') {
+      onOpenReviewQueue?.(request.kycId);
+    }
+  }
 
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
@@ -61,7 +91,14 @@ export default function RequestsScreen({ requests, error, info }) {
       key: 'status',
       header: 'Status',
       tight: true,
-      render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge>,
+      render: (r) =>
+        r.status === 'REVIEW' ? (
+          <button type="button" className="app-status-link" onClick={() => openReviewQueue(r)}>
+            <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
+          </button>
+        ) : (
+          <Badge tone={statusTone(r.status)}>{statusLabel(r.status, r.decisionSource)}</Badge>
+        ),
     },
     { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
   ];
@@ -88,8 +125,8 @@ export default function RequestsScreen({ requests, error, info }) {
       )}
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
-        <MetricTile label="Seen" value={requests.length} />
-        <MetricTile label="Verified" value={counts.VERIFIED ?? 0} tone="positive" />
+        <MetricTile label="Total Applications" value={requests.length} />
+        <MetricTile label="Total Approved" value={totalApproved} tone="positive" />
       </Grid>
 
       <Toolbar>
@@ -105,10 +142,11 @@ export default function RequestsScreen({ requests, error, info }) {
 
       <DataTable
         columns={columns}
-        rows={matches}
+        rows={pagedMatches}
+        maxRows={null}
         total={matches.length}
-        rowKey={(r) => r.applicationId}
-        footnote="newest first"
+        rowKey={(r) => r.kycId ?? r.applicationId}
+        footnote={`newest first · page ${page} of ${totalPages}`}
         empty={
           <EmptyState
             title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}
@@ -125,6 +163,25 @@ export default function RequestsScreen({ requests, error, info }) {
           </EmptyState>
         }
       />
+
+      {matches.length > PAGE_SIZE && (
+        <div className="app-pagination" aria-label="Applications pagination">
+          <span className="app-pagination__summary">
+            Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, matches.length)} of {matches.length}
+          </span>
+          <div className="app-pagination__actions">
+            <Button disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
+              Previous
+            </Button>
+            <Button
+              disabled={page === totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

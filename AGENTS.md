@@ -71,7 +71,7 @@ only build and test. Three consequences worth holding on to:
   sources this module calls over HTTP, it is built by `docker compose up`, and on AWS it is a
   **third container in the same ECS task** (reached on `127.0.0.1:8081`). Changing its wire
   format means changing `IdVerificationClient` in the same commit — nothing else talks to it.
-- **Keep `./mvnw test` green** — 71 in `backend/`, 30 in `mock-integration/`, all on H2 or no
+- **Keep `./mvnw test` green** — 77 in `backend/`, 30 in `mock-integration/`, all on H2 or no
   database at all, no Docker. Real-MySQL tests are `*IT` (Testcontainers) and run on
   `./mvnw verify` — in CI automatically, locally with `-DskipITs=false` and Docker up.
 - **Never log `identityDocument.documentId`.** It goes to the identity agencies and appears

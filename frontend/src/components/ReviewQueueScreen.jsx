@@ -11,6 +11,8 @@ import {
 } from '../design-system';
 import { api } from '../api.js';
 
+const PAGE_SIZE = 10;
+
 function queueAge(createdAt) {
   const elapsedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
   const minutes = Math.floor(elapsedMs / 60000);
@@ -26,12 +28,13 @@ function workings(item) {
   return [item.source, confidence, item.comment].filter(Boolean).join(' - ');
 }
 
-export default function ReviewQueueScreen({ queue, applications, error }) {
+export default function ReviewQueueScreen({ queue, applications, error, focusedKycId }) {
   const [selectedId, setSelectedId] = useState(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
+  const [page, setPage] = useState(1);
 
   const applicantNames = useMemo(
     () => new Map(applications.map((application) => [application.applicationId, application.name])),
@@ -44,6 +47,34 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
       setReason('');
     }
   }, [queue, selectedId]);
+
+  useEffect(() => {
+    if (!focusedKycId) {
+      return;
+    }
+
+    const index = queue.findIndex((item) => item.kycId === focusedKycId);
+    if (index === -1) {
+      return;
+    }
+
+    setSelectedId(focusedKycId);
+    setPage(Math.floor(index / PAGE_SIZE) + 1);
+    setReason('');
+    setActionError(null);
+    setActionMessage(null);
+  }, [focusedKycId, queue]);
+
+  const totalPages = Math.max(1, Math.ceil(queue.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pagedQueue = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return queue.slice(start, start + PAGE_SIZE);
+  }, [queue, page]);
 
   const selected = queue.find((item) => item.kycId === selectedId) ?? null;
   const canSubmit = reason.trim().length > 0 && !submitting;
@@ -111,7 +142,8 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
         <section aria-label="Review queue">
           <DataTable
             columns={columns}
-            rows={queue}
+            rows={pagedQueue}
+            maxRows={null}
             total={queue.length}
             rowKey={(item) => item.kycId}
             selectedKey={selectedId}
@@ -121,13 +153,32 @@ export default function ReviewQueueScreen({ queue, applications, error }) {
               setActionError(null);
               setActionMessage(null);
             }}
-            footnote="oldest first"
+            footnote={`oldest first · page ${page} of ${totalPages}`}
             empty={
               <EmptyState title="Queue clear">
                 No cases are waiting for an analyst decision.
               </EmptyState>
             }
           />
+
+          {queue.length > PAGE_SIZE && (
+            <div className="app-pagination" aria-label="Review queue pagination">
+              <span className="app-pagination__summary">
+                Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, queue.length)} of {queue.length}
+              </span>
+              <div className="app-pagination__actions">
+                <Button disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
+                  Previous
+                </Button>
+                <Button
+                  disabled={page === totalPages}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="review-case" aria-label="Selected review case">

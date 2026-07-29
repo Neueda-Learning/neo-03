@@ -89,12 +89,17 @@ class ApplicationServiceTest {
     }
 
     private static ApplicationRequest request(String id, String documentType, String expiryDate) {
+        return request(id, documentType, expiryDate, "GB");
+    }
+
+    private static ApplicationRequest request(String id, String documentType, String expiryDate,
+                                              String issuingCountry) {
         Application application = new Application(
                 id, "MOBILE_APP", "2026-07-25T09:14:00Z",
                 new Application.Applicant("Jonas Meyer", "1979-02-14", null, null, null, null,
                         null, null, null, null, null),
                 new Application.IdentityDocument(
-                        documentType, "MEYER701794JM9AB", "GB", expiryDate),
+                        documentType, "MEYER701794JM9AB", issuingCountry, expiryDate),
                 null, null,
                 new Application.Product("CREDIT_CARD_STANDARD", 2500),
                 null, null);
@@ -270,6 +275,60 @@ class ApplicationServiceTest {
     }
 
     @Test
+    @DisplayName("A non-ISO issuing country fails locally — the provider is never called")
+    void rejectsAnInvalidIssuingCountryBeforeTryingToVerify() {
+        // SIM-09 carries "PRT" where the contract's ground rule says alpha-2. The value is STORED
+        // rather than refused at the door: a module that cannot hold a malformed value cannot say
+        // which field was wrong, and the applicant gets a stack trace instead of a sentence.
+        service.processApplication(request("SIM-09", "PASSPORT", "2030-12-31", "PRT"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(saved.getValue().getIssuingCountry()).isEqualTo("PRT");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
+
+        assertThat(reportedComment("SIM-09", Decision.REJECTED))
+                .startsWith("KYC_DOCUMENT_INVALID")
+                .contains("PRT");
+        // Same proof as the expiry pre-check: zero calls, so no provider fee for an answer the
+        // field itself already gave us.
+        verify(gateway, never()).verify(any(), any());
+        verify(thirdPartyAttempts, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("A dd-MM-uuuu expiry date is parsed, not treated as a crash")
+    void acceptsDayMonthYearExpiryDatesFromTheSidecarCorpus() {
+        // The other half of SIM-09: "31-12-2030". Dates are String on the wire on purpose, and
+        // this is the module choosing to understand a second format rather than refuse the
+        // request outright.
+        providerAnswers(94);
+
+        service.processApplication(request("SIM-09", "PASSPORT", "31-12-2030"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getExpiryDate()).isEqualTo(LocalDate.of(2030, 12, 31));
+        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
+
+        assertThat(reportedComment("SIM-09", Decision.ACCEPTED)).startsWith("KYC_VERIFIED");
+    }
+
+    @Test
+    @DisplayName("An automated decision is stamped AUTO, so an override can be told apart later")
+    void anAutomatedDecisionIsMarkedAuto() {
+        providerAnswers(96);
+
+        service.processApplication(request("SIM-01"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
+    }
+
+    @Test
     @DisplayName("Exactly six months to expiry still goes to the provider")
     void acceptsADocumentThatExpiresInExactlySixMonths() {
         providerAnswers(92);
@@ -393,7 +452,7 @@ class ApplicationServiceTest {
     void theBoardShowsWhatWasStored() {
         when(kycRecords.findAllByOrderByCreatedAtDescKycIdDesc())
                 .thenReturn(List.of(new KycRecord(
-                        "KYC-1", "SIM-01", "VERIFIED", "Jonas Meyer", "DRIVING_LICENCE",
+                        "KYC-1", "SIM-01", "VERIFIED", "AUTO", "Jonas Meyer", "DRIVING_LICENCE",
                         "MEYER701794JM9AB", "GB", LocalDate.of(2029, 8, 31))));
 
         assertThat(service.findAll())

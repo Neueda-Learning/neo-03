@@ -11,4 +11,10 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/004-rename-review-tables.yaml
   - include:
-      file: db/changelog/changes/005-add-attempt-provider-columns.yaml
+      file: db/changelog/changes/005-add-decision-source-to-kyc-record.yaml
+  - include:
+      file: db/changelog/changes/006-widen-issuing-country.yaml
+  - include:
+      file: db/changelog/changes/007-add-attempt-provider-columns.yaml
+  - include:
+      file: db/changelog/changes/008-restore-issuing-country-not-null.yaml

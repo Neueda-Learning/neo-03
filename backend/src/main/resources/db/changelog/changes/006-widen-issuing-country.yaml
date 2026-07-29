@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-widen-issuing-country
+      author: neo-03
+      changes:
+        - modifyDataType:
+            tableName: kyc_record
+            columnName: issuing_country
+            newDataType: VARCHAR(16)
+      rollback:
+        - modifyDataType:
+            tableName: kyc_record
+            columnName: issuing_country
+            newDataType: VARCHAR(2)

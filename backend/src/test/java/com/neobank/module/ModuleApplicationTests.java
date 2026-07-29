@@ -151,6 +151,8 @@ class ModuleApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].status")
                         .value(org.hamcrest.Matchers.hasItem("VERIFIED")))
+                .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].decisionSource")
+                        .value(org.hamcrest.Matchers.hasItem("AUTO")))
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].name")
                         .value(org.hamcrest.Matchers.hasItem("Jonas Meyer")))
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].documentId")
