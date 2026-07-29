@@ -123,6 +123,14 @@ public class ApplicationService {
         try {
             log.info("Processing KYC application — {}", request.summary());
 
+            KycRecord existingRecord = kycRecords
+                    .findFirstByApplicationIdOrderByCreatedAtDescKycIdDesc(applicationId)
+                    .orElse(null);
+            if (existingRecord != null) {
+                reportExistingResult(existingRecord);
+                return;
+            }
+
             KycAssessment assessment = assess(request);
             kycRecords.save(assessment.record());
             if (!assessment.attempts().isEmpty()) {
@@ -145,6 +153,28 @@ public class ApplicationService {
             orchestrator.applicationStatusUpdate(applicationId, Decision.REFERRED,
                     "module error: " + e);
         }
+    }
+
+    /**
+     * Makes receiving the same application idempotent. Older environments may already contain
+     * duplicate application ids, so the repository deliberately selects the newest record.
+     */
+    private void reportExistingResult(KycRecord record) {
+        Decision decision = switch (record.getStatus()) {
+            case "VERIFIED" -> Decision.ACCEPTED;
+            case "FAILED" -> Decision.REJECTED;
+            case "REVIEW" -> Decision.REFERRED;
+            default -> throw new IllegalStateException(
+                    "unknown stored KYC status for " + record.getApplicationId()
+                            + ": " + record.getStatus());
+        };
+        log.info("Application {} already processed as {}; reusing stored result",
+                record.getApplicationId(), decision);
+        orchestrator.applicationStatusUpdate(
+                record.getApplicationId(),
+                decision,
+                "application already processed; returning stored KYC result: "
+                        + record.getStatus());
     }
 
     /** Everything this module has answered, newest first — what its own UI reads. */

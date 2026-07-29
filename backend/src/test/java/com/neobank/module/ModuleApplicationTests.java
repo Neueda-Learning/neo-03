@@ -154,6 +154,25 @@ class ModuleApplicationTests {
     }
 
     @Test
+    void receivingTheSameApplicationTwiceDoesNotAddAnotherRow() throws Exception {
+        String duplicate = application("IT-DUPLICATE");
+
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(duplicate))
+                .andExpect(status().isAccepted());
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(duplicate))
+                .andExpect(status().isAccepted());
+
+        mvc.perform(get("/api/v1/applications"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.applicationId == 'IT-DUPLICATE')]",
+                        hasSize(1)));
+    }
+
+    @Test
     void anApplicationWithoutAnIdIsRejected() throws Exception {
         // The one field worth validating: a decision this module cannot report is not worth making.
         mvc.perform(post("/api/v1/applications")

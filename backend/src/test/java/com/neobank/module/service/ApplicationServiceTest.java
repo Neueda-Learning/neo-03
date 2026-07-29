@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +31,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -311,6 +314,39 @@ class ApplicationServiceTest {
         });
         verify(orchestrator).applicationStatusUpdate(
                 "SIM-07", Decision.ACCEPTED, "national_id verified on attempt 1 (confidence 95)");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "VERIFIED, ACCEPTED",
+            "FAILED, REJECTED",
+            "REVIEW, REFERRED"
+    })
+    void anExistingApplicationReturnsItsStoredResultWithoutWritingRows(
+            String storedStatus, Decision expectedDecision) {
+        KycRecord existing = new KycRecord(
+                "KYC-EXISTING",
+                "SIM-DUPLICATE",
+                storedStatus,
+                "AUTO",
+                "Jonas Meyer",
+                "DRIVING_LICENCE",
+                "MEYER701794JM9AB",
+                "GB",
+                LocalDate.of(2029, 8, 31));
+        when(kycRecords.findFirstByApplicationIdOrderByCreatedAtDescKycIdDesc("SIM-DUPLICATE"))
+                .thenReturn(java.util.Optional.of(existing));
+
+        service.processApplication(request("SIM-DUPLICATE"));
+
+        verify(kycRecords)
+                .findFirstByApplicationIdOrderByCreatedAtDescKycIdDesc("SIM-DUPLICATE");
+        verify(kycRecords, never()).save(any());
+        verifyNoInteractions(thirdPartyAttempts, reviewFails, reviewScores, idVerificationClient);
+        verify(orchestrator).applicationStatusUpdate(
+                eq("SIM-DUPLICATE"),
+                eq(expectedDecision),
+                eq("application already processed; returning stored KYC result: " + storedStatus));
     }
 
     @Test
