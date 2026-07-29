@@ -1,9 +1,10 @@
-# Standalone stack for THIS service: MySQL + backend + frontend + the sidecar.
+# Standalone stack for THIS service: MySQL + backend + frontend + the mock agencies + the sidecar.
 # Useful for working on the service without booting all 23 containers of the system.
 #
 #   docker compose up --build
 #   → http://localhost:9000   the SIDECAR — send applications, watch what comes back
 #   → http://localhost:5173   React UI    http://localhost:8080/  status page
+#   → http://localhost:8081   the MOCK IDENTITY AGENCIES — turn one off, watch the module cope
 #
 # In the full system, neo-00/docker-compose.yml supplies the shared MySQL and the REAL
 # orchestrator instead, and this file is not used.
@@ -42,7 +43,10 @@ services:
       SERVICE_ID: ${SERVICE_ID:-neo03}
       SERVICE_NAME: ${SERVICE_NAME:-Identity Verification (KYC)}
       SERVICE_DOMAIN: ${SERVICE_DOMAIN:-kyc}
-      MOCKED_DEPENDENCIES: ${MOCKED_DEPENDENCIES:-id-verification-provider}
+      MOCKED_DEPENDENCIES: ${MOCKED_DEPENDENCIES:-national-identity-agency,tax-agency}
+      # The identity sources. Same port (8081) here and on AWS, where the mock runs as a third
+      # container in the SAME ECS task and is reached on 127.0.0.1:8081.
+      ID_PROVIDER_BASE_URL: ${ID_PROVIDER_BASE_URL:-http://mock-integration:8081}
       # The sidecar plays the orchestrator here, so callbacks have somewhere real to land and
       # you can see BOTH halves of the contract. Point this at http://orchestrator:8080 to talk
       # to the real one instead — nothing else in the module changes.
@@ -54,8 +58,41 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      # service_started, NOT service_healthy — deliberately, to mirror ECS, which has no
+      # DependsOn at all. A backend that cannot boot without the provider would fail on Fargate,
+      # where that dependency cannot be expressed. The module must survive its provider being
+      # absent: an outage parks applications for a human, it does not stop the module.
+      mock-integration:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # The mocked government identity sources: a National Identity Agency (primary) and a Tax
+  # Agency (fallback). This is what the module calls instead of rolling dice.
+  #
+  # Stateless — no MySQL dependency, nothing in db/init, nothing to reset. It is the SAME image
+  # that runs as a third container in the same ECS task on dev and prod, on the same port, so
+  # what you see here is what runs there.
+  #
+  # Open http://localhost:8081 to turn an agency off and watch the retry ladder, the failover
+  # and the circuit breaker do their work.
+  mock-integration:
+    build: ./mock-integration
+    environment:
+      SERVER_PORT: 8081
+      # Boot with an agency already down, for a demo that starts broken:
+      #   AGENCY_KILL_SWITCH=true docker compose up
+      AGENCY_LATENCY_MS: ${AGENCY_LATENCY_MS:-0}
+      AGENCY_FAILURE_RATE_PCT: ${AGENCY_FAILURE_RATE_PCT:-0}
+      AGENCY_KILL_SWITCH: ${AGENCY_KILL_SWITCH:-false}
+    ports:
+      - "${MOCK_PORT:-8081}:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8081/health"]
       interval: 10s
       timeout: 5s
       retries: 12

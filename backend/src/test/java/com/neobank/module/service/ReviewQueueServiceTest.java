@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.dto.ManualReviewDecisionRequest;
-import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
@@ -47,8 +46,10 @@ class ReviewQueueServiceTest {
                 reviewFails,
                 reviewScores,
                 orchestrator,
-                mock(IdVerificationClient.class),
-                Clock.fixed(Instant.parse("2026-07-28T12:00:00Z"), ZoneOffset.UTC));
+                mock(ProviderGateway.class),
+                Clock.fixed(Instant.parse("2026-07-28T12:00:00Z"), ZoneOffset.UTC),
+                92,
+                60);
     }
 
     @Test

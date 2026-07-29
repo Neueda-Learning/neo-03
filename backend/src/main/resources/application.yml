@@ -74,7 +74,46 @@ service:
   # Comma-separated external systems this module fakes — the "what has been mocked" register,
   # served live on /info so it cannot go stale the way a paragraph in a document does. Empty
   # means you are claiming nothing is mocked.
-  mocked-dependencies: ${MOCKED_DEPENDENCIES:id-verification-provider}
+  mocked-dependencies: ${MOCKED_DEPENDENCIES:national-identity-agency,tax-agency}
+
+# The identity sources this module calls — the `mock-integration` service in this repo.
+#
+# It stands in for a National Identity Agency (primary) and a Tax Agency (fallback). Three things
+# can be listening:
+#   http://mock-integration:8081   this repo's compose (the default there)
+#   http://localhost:8081          that same mock, from a backend you run in your IDE (this default)
+#   http://127.0.0.1:8081          the SAME ECS TASK on AWS — awsvpc gives one network namespace
+#                                  per task, exactly like nginx reaching the backend
+id-provider:
+  base-url: ${ID_PROVIDER_BASE_URL:http://localhost:8081}
+
+  # How long ONE attempt may take before it counts as a timeout.
+  #
+  # Load-bearing: without it a provider that accepts the connection and then hangs holds a worker
+  # thread until the OS gives up — minutes — and the retry ladder never gets to run at all. Armed
+  # on a SEPARATE RestClient (see config/AppConfig.java) so the orchestrator callback does not
+  # inherit it.
+  timeout-ms: ${ID_PROVIDER_TIMEOUT_MS:2000}
+
+  # The retry ladder against the PRIMARY. 3 attempts, waiting 1s then 2s between them.
+  # The fallback deliberately gets one attempt and no budget of its own.
+  max-attempts: ${ID_PROVIDER_MAX_ATTEMPTS:3}
+  backoff-ms: ${ID_PROVIDER_BACKOFF_MS:1000,2000}
+
+  # THRESHOLDS ARE COMPLIANCE POLICY, SHIPPED AS CONFIGURATION.
+  # >= accept verifies, <= reject fails, strictly between parks for a human. Both boundaries are
+  # inclusive on their own side, so no score falls through both tests. Startup fails if reject is
+  # not below accept — inverted thresholds silently empty the review band rather than throwing.
+  accept-threshold: ${ID_PROVIDER_ACCEPT_THRESHOLD:92}
+  reject-threshold: ${ID_PROVIDER_REJECT_THRESHOLD:60}
+
+  # The circuit breaker. After this many CONSECUTIVE failures the module stops calling that agency
+  # entirely and fails fast, then lets one trial call through once the cooldown has elapsed.
+  # Without it, a one-hour outage costs every single application the full ladder — ~10s of worker
+  # thread each — to re-learn a fact the last hundred applications already established.
+  breaker:
+    failure-threshold: ${ID_PROVIDER_BREAKER_THRESHOLD:5}
+    cooldown-ms: ${ID_PROVIDER_BREAKER_COOLDOWN_MS:30000}
 
 cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}

@@ -11,4 +11,4 @@ ServiceId=neo03
 DisplayName=Identity Verification (KYC)
 Domain=kyc
 Team=Team 03
-MockedDependencies=id-verification-provider
+MockedDependencies=national-identity-agency,tax-agency

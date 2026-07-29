@@ -51,6 +51,14 @@ Parameters:
     Description: Pinned to an immutable @sha256 digest by the pipeline, so a build rolls the task def.
   FrontendImage:
     Type: String
+  MockImage:
+    Type: String
+    Default: ""
+    Description: >-
+      OPTIONAL third container: the mocked government identity agencies this module calls, on
+      8081. EMPTY (the default) deploys the two-container task every other service wants — and
+      it is the default for a reason: a prod promote whose SSM pin predates the mock passes ""
+      here, and without a Default the whole template would fail validation instead.
 
   DesiredCount:
     Type: Number
@@ -139,6 +147,10 @@ Parameters:
 Conditions:
   IsOrchestrator: !Equals [!Ref Role, orchestrator]
   HasPathPrefix: !Not [!Equals [!Ref PathPrefix, ""]]
+  # Orthogonal to IsOrchestrator: Role selects which env vars the backend gets, this selects
+  # how many containers the task has. With MockImage empty the rendered template is byte-for-byte
+  # the two-container one this repo shipped before.
+  HasMockIntegration: !Not [!Equals [!Ref MockImage, ""]]
 
 Resources:
 
@@ -208,8 +220,17 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub "neobank-${EnvironmentName}-${ServiceName}"
-      Cpu: "512"
-      Memory: "1024"
+      # 512/1024 is the two-container size every service has always run, and it has exactly
+      # 128 MiB spare (backend 768 + frontend 128 = 896). Fargate rejects a task whose container
+      # hard limits exceed the task memory, and 128 MiB will not survive a JVM's non-heap floor
+      # anyway — metaspace, code cache and thread stacks alone are more than that.
+      #
+      # With the mock: 768 + 128 + 512 = 1408, so the task grows to 2048. The CPU doubles with
+      # it because three JVMs starting concurrently on half a vCPU push Spring Boot's 60-90s
+      # startup past the health-check grace period, and the deployment circuit breaker then
+      # rolls back a build that was perfectly good.
+      Cpu: !If [HasMockIntegration, "1024", "512"]
+      Memory: !If [HasMockIntegration, "2048", "1024"]
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       ExecutionRoleArn: !ImportValue
@@ -302,6 +323,12 @@ Resources:
               - { Name: SERVICE_TEAM, Value: !Ref Team }
               - { Name: MOCKED_DEPENDENCIES, Value: !Ref MockedDependencies }
               - { Name: CORS_ALLOWED_ORIGIN_PATTERNS, Value: !Sub "http://${AlbDnsName},http://localhost:*" }
+              # The identity agencies, in the SAME task. 127.0.0.1 and not "localhost": awsvpc
+              # shares one network namespace, and a literal IPv4 address cannot resolve to ::1
+              # against an IPv4-only listener. Same reasoning as the frontend's BACKEND_HOST.
+              # Set unconditionally — harmless when the mock container is absent, and it keeps
+              # the env list flat rather than nesting an Fn::If inside this Fn::If branch.
+              - { Name: ID_PROVIDER_BASE_URL, Value: "http://127.0.0.1:8081" }
           Secrets:
             - Name: DB_PASSWORD
               ValueFrom: !Sub
@@ -342,6 +369,55 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: !Sub "${ServiceName}-ui"
 
+        # The mocked government identity agencies this module calls.
+        #
+        # Stateless on purpose: no database, no Liquibase, no schema, so db-init-schema.sh needs
+        # no change and it takes nothing from the measured 60-connection RDS ceiling the eleven
+        # services divide between them.
+        #
+        # NOT reachable from outside the task — no target group, no listener rule. The backend
+        # calls it on 127.0.0.1:8081 for exactly the reason nginx calls the backend on
+        # 127.0.0.1:8080: awsvpc gives one network namespace per task.
+        #
+        # Fn::If returning AWS::NoValue is the only way to make a LIST ELEMENT conditional in
+        # CloudFormation — the element vanishes entirely when the condition is false. Long form
+        # (Fn::If / Ref) rather than the !If / !Ref tags because the true branch is a mapping.
+        - Fn::If:
+            - HasMockIntegration
+            - Name: mock-integration
+              Image: !Ref MockImage
+              # Essential, and that is a real trade. ECS never restarts an individual container
+              # inside a running task: a non-essential mock that dies at 3am would stay dead for
+              # the life of the task, with the module running blind against it and no signal.
+              # Essential means a death replaces the whole task — self-healing — and a mock that
+              # cannot start fails the deploy loudly and rolls back through the circuit breaker
+              # configured below.
+              Essential: true
+              # Hard limit, same reason as the backend's: the JVM sizes its heap from the
+              # CONTAINER limit, not the task's.
+              Memory: 512
+              RepositoryCredentials:
+                CredentialsParameter: !ImportValue
+                  Fn::Sub: "neobank-${EnvironmentName}-GhcrSecretArn"
+              PortMappings:
+                - { ContainerPort: 8081, Protocol: tcp }
+              Environment:
+                # 60%, not the backend's 70%. At 512 MiB, 70% is ~358 MB of heap and leaves
+                # ~154 MB for metaspace, code cache, thread stacks and native — under the floor.
+                # SerialGC and C1-only JIT trim footprint and startup for a service with no hot
+                # loop and no throughput to speak of.
+                - Name: JAVA_TOOL_OPTIONS
+                  Value: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+                - { Name: SERVER_PORT, Value: "8081" }
+              LogConfiguration:
+                LogDriver: awslogs
+                Options:
+                  awslogs-group: !ImportValue
+                    Fn::Sub: "neobank-${EnvironmentName}-LogGroup"
+                  awslogs-region: !Ref AWS::Region
+                  awslogs-stream-prefix: !Sub "${ServiceName}-mock"
+            - !Ref AWS::NoValue
+
   Service:
     Type: AWS::ECS::Service
     # The rule must exist before the service registers targets against the group.
@@ -355,7 +431,8 @@ Resources:
       LaunchType: FARGATE
       EnableExecuteCommand: true
       # Spring Boot on half a vCPU takes 60-90s; a shorter grace period fails slow deploys.
-      HealthCheckGracePeriodSeconds: 180
+      # With the mock that is a third image to pull and a third JVM warming up at the same time.
+      HealthCheckGracePeriodSeconds: !If [HasMockIntegration, 240, 180]
       DeploymentConfiguration:
         MinimumHealthyPercent: 0     # one task per slot: it must go down before it comes up
         MaximumPercent: 200

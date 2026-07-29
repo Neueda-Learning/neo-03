@@ -6,7 +6,6 @@ import com.neobank.module.dto.ReviewQueueView;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
-import com.neobank.module.integrations.idprovider.IdVerificationClient;
 import com.neobank.module.model.Decision;
 import com.neobank.module.model.KycRecord;
 import com.neobank.module.model.ReviewFail;
@@ -34,6 +33,7 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,10 +52,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(ApplicationService.class);
-    private static final int MAX_THIRD_PARTY_ATTEMPTS = 3;
-    private static final long INITIAL_BACKOFF_MILLIS = 100L;
-    private static final int ACCEPT_CONFIDENCE_MIN = 92;
-    private static final int REVIEW_CONFIDENCE_MIN = 61;
     private static final int REVIEW_QUEUE_LIMIT = 10;
 
     private final Executor executor;
@@ -64,8 +60,26 @@ public class ApplicationService {
     private final ReviewFailRepository reviewFails;
     private final ReviewScoreRepository reviewScores;
     private final OrchestratorClient orchestrator;
-    private final IdVerificationClient idVerificationClient;
+    private final ProviderGateway gateway;
     private final Clock clock;
+
+    /**
+     * Confidence at or above this verifies the applicant.
+     *
+     * <p>Configuration, not a constant, because <b>thresholds are compliance policy</b>. When the
+     * risk team wants 95 instead of 92 that is a decision about appetite, and it should not need a
+     * developer, a code review and a deploy. {@code >=} and not {@code >}: a document scoring
+     * exactly the accept threshold passes, which is the boundary the module brief singles out.</p>
+     */
+    private final int acceptThreshold;
+
+    /**
+     * Confidence at or below this rejects. Strictly between the two → a human decides.
+     *
+     * <p>{@code <=}, mirroring accept, so the two boundaries are inclusive on their own side and
+     * there is no score that falls through both tests.</p>
+     */
+    private final int rejectThreshold;
 
     /**
      * {@code applicationTaskExecutor} is the thread pool Spring Boot configures for you. Tune it in
@@ -79,16 +93,28 @@ public class ApplicationService {
                               ReviewFailRepository reviewFails,
                               ReviewScoreRepository reviewScores,
                               OrchestratorClient orchestrator,
-                              IdVerificationClient idVerificationClient,
-                              Clock clock) {
+                              ProviderGateway gateway,
+                              Clock clock,
+                              @Value("${id-provider.accept-threshold:92}") int acceptThreshold,
+                              @Value("${id-provider.reject-threshold:60}") int rejectThreshold) {
         this.executor = executor;
         this.kycRecords = kycRecords;
         this.thirdPartyAttempts = thirdPartyAttempts;
         this.reviewFails = reviewFails;
         this.reviewScores = reviewScores;
         this.orchestrator = orchestrator;
-        this.idVerificationClient = idVerificationClient;
+        this.gateway = gateway;
         this.clock = clock;
+        if (rejectThreshold >= acceptThreshold) {
+            // Caught at startup rather than per application. Inverted thresholds do not throw at
+            // decision time — they quietly make the REVIEW band empty, so every borderline case
+            // silently passes or fails and nothing ever reaches a human.
+            throw new IllegalArgumentException(
+                    "reject threshold (%d) must be below accept threshold (%d)"
+                            .formatted(rejectThreshold, acceptThreshold));
+        }
+        this.acceptThreshold = acceptThreshold;
+        this.rejectThreshold = rejectThreshold;
     }
 
     /**
@@ -232,10 +258,15 @@ public class ApplicationService {
         boolean expiresTooSoon = expiryDate.isBefore(LocalDate.now(clock).plusMonths(6));
         String kycId = UUID.randomUUID().toString();
 
+        // The expiry pre-check runs FIRST and, when it fires, the provider is never called at all.
+        // That is not an optimisation — the empty attempt list it leaves behind is the evidence
+        // that no provider fee was paid for an answer the date alone gave us.
         VerificationOutcome outcome = expiresTooSoon
                 ? new VerificationOutcome("FAILED", Decision.REJECTED,
-                "identity document expires in less than 6 months", List.of(), null)
-                : verifyIdentityDocument(kycId, documentType);
+                comment(ReasonCode.KYC_DOCUMENT_EXPIRED,
+                        "identity document expires in less than 6 months (" + expiryDate + ")"),
+                List.of(), null)
+                : verifyIdentityDocument(kycId, application);
 
         KycRecord record = new KycRecord(
                 kycId,
@@ -259,116 +290,88 @@ public class ApplicationService {
                 reviewFail, reviewScore);
     }
 
-    private VerificationOutcome verifyIdentityDocument(String kycId, String documentType) {
-        return switch (documentType.toUpperCase(Locale.ROOT)) {
-            case "PASSPORT" -> verifyWithRetries(kycId, documentType,
-                    idVerificationClient::verifyPassport);
-            case "NATIONAL_ID" -> verifyWithRetries(kycId, documentType,
-                idVerificationClient::verifyNationalId);
-            case "DRIVING_LICENCE" -> verifyWithRetries(kycId, documentType,
-                    idVerificationClient::verifyDrivingLicense);
-            default -> new VerificationOutcome(
-                    "VERIFIED",
-                    Decision.ACCEPTED,
-                    "identity document verified",
-                    List.of(),
-                    null);
-        };
-    }
+    /**
+     * Ask the identity sources, then turn what they said into this module's answer.
+     *
+     * <p>The ladder, the backoff, the failover and the circuit breaker all live in
+     * {@link ProviderGateway}. What is left here is the only part that is a BANKING decision:
+     * which confidence means what.</p>
+     */
+    private VerificationOutcome verifyIdentityDocument(String kycId, Application application) {
+        ProviderGateway.ProviderOutcome provider = gateway.verify(kycId, application);
 
-    private VerificationOutcome verifyWithRetries(String kycId,
-                                                  String documentType,
-                                                  VerificationCall verificationCall) {
-        List<ThirdPartyAttempt> attempts = new ArrayList<>();
-        for (int attemptNumber = 1; attemptNumber <= MAX_THIRD_PARTY_ATTEMPTS; attemptNumber++) {
-            Integer confidence = verificationCall.verify();
-            AttemptOutcome attemptOutcome = classifyAttempt(confidence);
-            attempts.add(new ThirdPartyAttempt(
-                    UUID.randomUUID().toString(),
-                    kycId,
-                    attemptNumber,
-                    documentType,
-                attemptOutcome.result(),
-                attemptOutcome.storeConfidence() ? confidence : null,
-                attemptComment(documentType, attemptOutcome)));
-
-            switch (attemptOutcome) {
-            case ACCEPTED -> {
-                return new VerificationOutcome(
-                    "VERIFIED",
-                    Decision.ACCEPTED,
-                    "%s verified on attempt %d (confidence %d)".formatted(
-                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts,
-                    null);
-            }
-            case REVIEW -> {
-                return new VerificationOutcome(
-                    "REVIEW",
-                    Decision.REFERRED,
-                    "%s requires manual review on attempt %d (confidence %d)".formatted(
-                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts,
-                    confidence);
-            }
-            case REJECTED -> {
-                return new VerificationOutcome(
-                    "FAILED",
-                    Decision.REJECTED,
-                    "%s verification failed on attempt %d (confidence %d)".formatted(
-                        documentType.toLowerCase(Locale.ROOT), attemptNumber, confidence),
-                    attempts,
-                    null);
-            }
-            case UNAVAILABLE -> {
-                if (attemptNumber < MAX_THIRD_PARTY_ATTEMPTS) {
-                backoff(attemptNumber);
-                }
-            }
-            }
+        if (!provider.answered()) {
+            // Nobody answered. This is REVIEW and never FAILED: "rejected" is a business statement
+            // about the applicant, and a provider outage says nothing whatsoever about them. The
+            // applicant did nothing wrong, so a human picks it up.
+            return new VerificationOutcome("REVIEW", Decision.REFERRED,
+                    comment(ReasonCode.KYC_PROVIDER_UNAVAILABLE,
+                            "no identity source answered after %d attempts (%s)"
+                                    .formatted(provider.attempts().size(), provider.lastFailure())),
+                    provider.attempts(), null);
         }
 
-        return new VerificationOutcome(
-                "REVIEW",
-                Decision.REFERRED,
-                "%s verification unavailable after %d attempts; manual review required".formatted(
-                        documentType.toLowerCase(Locale.ROOT), MAX_THIRD_PARTY_ATTEMPTS),
-                attempts,
-                null);
+        int confidence = provider.answer().confidence();
+
+        // The forgery check comes BEFORE the confidence bands. A document the register says is not
+        // genuine is refused whatever number sits beside it — a convincing forgery scores well,
+        // which is precisely what makes it a forgery.
+        if (provider.answer().documentReportedForged()) {
+            return new VerificationOutcome("FAILED", Decision.REJECTED,
+                    comment(ReasonCode.KYC_DOCUMENT_INVALID, provider,
+                            "the issuing register does not recognise this document"),
+                    provider.attempts(), null);
+        }
+
+        if (confidence >= acceptThreshold) {
+            return new VerificationOutcome("VERIFIED", Decision.ACCEPTED,
+                    comment(ReasonCode.KYC_VERIFIED, provider,
+                            "identity confirmed with confidence %d".formatted(confidence)),
+                    provider.attempts(), null);
+        }
+
+        if (confidence <= rejectThreshold) {
+            return new VerificationOutcome("FAILED", Decision.REJECTED,
+                    comment(ReasonCode.KYC_LOW_CONFIDENCE, provider,
+                            "confidence %d is at or below the reject threshold %d"
+                                    .formatted(confidence, rejectThreshold)),
+                    provider.attempts(), null);
+        }
+
+        // Strictly between the thresholds. Not confident enough to pass, not doubtful enough to
+        // refuse — which is exactly the case a human should look at, and the reason this module has
+        // three outcomes rather than two.
+        return new VerificationOutcome("REVIEW", Decision.REFERRED,
+                comment(ReasonCode.KYC_LOW_CONFIDENCE, provider,
+                        "confidence %d sits between the reject (%d) and accept (%d) thresholds"
+                                .formatted(confidence, rejectThreshold, acceptThreshold)),
+                provider.attempts(), confidence);
     }
 
-    private void backoff(int attemptNumber) {
-        long delayMillis = INITIAL_BACKOFF_MILLIS << (attemptNumber - 1);
-        try {
-            Thread.sleep(delayMillis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("third-party retry interrupted", e);
-        }
+    /**
+     * The callback comment: a locked reason code, then the same fact in words.
+     *
+     * <p>Both halves earn their place. The code is what the console filters and the regulator's
+     * export groups by; the sentence is what an operator reads out to a customer who is asking why.
+     * The wire has three fields and no {@code reasons[]} array, so this is where a code can live —
+     * see {@link ReasonCode}.</p>
+     */
+    private String comment(ReasonCode code, String detail) {
+        return code + " · " + detail;
     }
 
-    private AttemptOutcome classifyAttempt(Integer confidence) {
-        if (confidence == null || confidence < 0) {
-            return AttemptOutcome.UNAVAILABLE;
-        }
-        if (confidence >= ACCEPT_CONFIDENCE_MIN) {
-            return AttemptOutcome.ACCEPTED;
-        }
-        if (confidence >= REVIEW_CONFIDENCE_MIN) {
-            return AttemptOutcome.REVIEW;
-        }
-        return AttemptOutcome.REJECTED;
+    /**
+     * As above, plus {@code KYC_FAILED_OVER_TO_SECONDARY} when the fallback is what answered.
+     *
+     * <p>Appended alongside the outcome code rather than replacing it: the applicant's result and
+     * the route it took there are two different facts, and an operator reviewing a case needs to
+     * know that this verdict came from a source that never saw the document.</p>
+     */
+    private String comment(ReasonCode code, ProviderGateway.ProviderOutcome provider, String detail) {
+        String base = comment(code, detail);
+        return provider.failedOver() ? base + " · " + ReasonCode.KYC_FAILED_OVER_TO_SECONDARY : base;
     }
 
-    private String attemptComment(String documentType, AttemptOutcome outcome) {
-        String normalizedType = documentType.toLowerCase(Locale.ROOT);
-        return switch (outcome) {
-            case ACCEPTED -> "%s verification succeeded".formatted(normalizedType);
-            case REVIEW -> "%s verification needs review".formatted(normalizedType);
-            case REJECTED -> "%s verification failed".formatted(normalizedType);
-            case UNAVAILABLE -> "%s provider unavailable".formatted(normalizedType);
-        };
-    }
 
     private static <T> T required(T value, String field) {
         if (value == null || value instanceof String string && string.isBlank()) {

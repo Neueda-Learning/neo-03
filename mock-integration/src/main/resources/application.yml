@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: neo03-mock-integration
+
+  # No datasource, no JPA, no Liquibase. This service is stateless on purpose — see pom.xml.
+  # Spring Boot will not try to auto-configure a DataSource because the starter is not on the
+  # classpath, so nothing needs excluding here.
+
+service:
+  name: ${SERVICE_NAME:Identity sources (mock)}
+  version: 0.1.0-SNAPSHOT
+
+# Starting positions for the misbehaviour dials. All off: the mock answers every call,
+# immediately, correctly, so nothing about the happy path depends on luck.
+#
+# These are the values `POST /api/v1/admin/reset` restores, so setting them here is how you
+# start a stack in a broken state on purpose — e.g. AGENCY_NATIONAL_KILL_SWITCH=true to boot
+# with the primary already down.
+#
+# The module brief seeds latency at 250ms; 0 is used here because a quarter-second on every
+# call slows every test for no teaching value. Set AGENCY_LATENCY_MS=250 for the brief's number.
+agency:
+  default-latency-ms: ${AGENCY_LATENCY_MS:0}
+  default-failure-rate-pct: ${AGENCY_FAILURE_RATE_PCT:0}
+  default-kill-switch: ${AGENCY_KILL_SWITCH:false}
+
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+server:
+  # 8081 everywhere: on a laptop, and as the third container of the same ECS task, where the
+  # backend reaches it on 127.0.0.1:8081.
+  port: ${SERVER_PORT:8081}
+  # Never leak a stack trace — GlobalExceptionHandler returns a controlled JSON shape.
+  error:
+    include-message: never
+    include-stacktrace: never

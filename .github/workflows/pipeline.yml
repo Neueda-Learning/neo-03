@@ -71,15 +71,29 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  # The mocked identity agencies. Stateless, so no Docker and no Testcontainers here —
+  # `verify` and `test` are the same thing in that module.
+  mock-integration:
+    name: build · mock identity agencies
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: mock-integration } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B verify
+
   # ---- PUBLISH (MAIN only): pinned @sha256 digests are this job's outputs ---------------
   publish:
     name: publish · images to ghcr.io
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend, frontend]
+    needs: [backend, frontend, mock-integration]
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.refs.outputs.backend }}
       frontend: ${{ steps.refs.outputs.frontend }}
+      mock: ${{ steps.refs.outputs.mock }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -132,16 +146,32 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      - name: Build + push the mock identity agencies
+        id: mk
+        uses: docker/build-push-action@v6
+        with:
+          context: ./mock-integration
+          push: true
+          tags: |
+            ${{ steps.img.outputs.base }}-mock-integration:latest
+            ${{ steps.img.outputs.base }}-mock-integration:sha-${{ github.sha }}
+          # Its own cache scope. The other two share the default one; a third build joining
+          # them would evict their layers on every run rather than speed anything up.
+          cache-from: type=gha,scope=mock
+          cache-to: type=gha,mode=max,scope=mock
+          provenance: false
+
       # The immutable refs everything downstream deploys — dev now, prod on promote.
       - id: refs
         run: |
           echo "backend=${{ steps.img.outputs.base }}-backend@${{ steps.be.outputs.digest }}" >> "$GITHUB_OUTPUT"
           echo "frontend=${{ steps.img.outputs.base }}-frontend@${{ steps.fe.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          echo "mock=${{ steps.img.outputs.base }}-mock-integration@${{ steps.mk.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   # ---- DEPLOY DEV (MAIN only) ----------------------------------------------------------
   deploy-dev:
     name: deploy · dev
-    needs: [backend, frontend, publish]
+    needs: [backend, frontend, mock-integration, publish]
     # Runs on a push once the build passed and dev is enabled. A pinned @sha256 param IS a
     # template change, so CloudFormation rolls the task definition itself — no force-deploy.
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled() && !failure() && vars.DEV_DEPLOY_ENABLED == 'true' }}
@@ -156,7 +186,27 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - name: Deploy this service to dev
         env: { AWS_REGION: "${{ vars.AWS_REGION }}" }
-        run: bash infra/deploy-service.sh dev '${{ needs.publish.outputs.backend }}' '${{ needs.publish.outputs.frontend }}'
+        run: >
+          bash infra/deploy-service.sh dev
+          '${{ needs.publish.outputs.backend }}'
+          '${{ needs.publish.outputs.frontend }}'
+          '${{ needs.publish.outputs.mock }}'
+
+      # The mock has no target group and no listener rule, so `smoke` structurally CANNOT see
+      # it: if the template's Fn::If silently dropped the container, everything below would go
+      # green against a two-container task whose backend calls a dead 127.0.0.1:8081. This is
+      # the only step that proves the third container actually landed.
+      - name: The task definition must carry the mock container
+        run: |
+          set -euo pipefail
+          SVC=$(sed -n 's/^ServiceName=//p' infra/env/dev.params)
+          NAMES=$(aws ecs describe-task-definition --task-definition "neobank-dev-$SVC" \
+                    --query 'taskDefinition.containerDefinitions[].name' --output text)
+          echo "containers: $NAMES"
+          case " $NAMES " in
+            *" mock-integration "*) echo "ok: 3-container task" ;;
+            *) echo "::error::mock-integration missing from neobank-dev-$SVC"; exit 1 ;;
+          esac
 
   # ---- SMOKE (MAIN only): after the main deploy, prove dev answers through the ALB --------
   smoke:
@@ -204,6 +254,8 @@ jobs:
             --name "/neobank/promote/$R/backend"  --value '${{ needs.publish.outputs.backend }}'
           aws ssm put-parameter --overwrite --type String \
             --name "/neobank/promote/$R/frontend" --value '${{ needs.publish.outputs.frontend }}'
+          aws ssm put-parameter --overwrite --type String \
+            --name "/neobank/promote/$R/mock-integration" --value '${{ needs.publish.outputs.mock }}'
           echo "pinned $R promote source to main's digest"
 
   # ---- PROMOTE → PROD (manual only): ship the pinned digest, NO rebuild ----------------
@@ -231,5 +283,12 @@ jobs:
           R="${{ github.event.repository.name }}"
           BACKEND=$(aws ssm get-parameter --name "/neobank/promote/$R/backend"  --query Parameter.Value --output text)
           FRONTEND=$(aws ssm get-parameter --name "/neobank/promote/$R/frontend" --query Parameter.Value --output text)
+          # Read TOLERANTLY. This pin does not exist until the first pin-main run after the mock
+          # was added, and a bare get-parameter exits 255 on a missing name — under `set -e` that
+          # kills the promote outright. An empty value deploys prod without the mock container,
+          # which is exactly what prod is running today, so it degrades rather than breaks.
+          MOCK=$(aws ssm get-parameter --name "/neobank/promote/$R/mock-integration" \
+                   --query Parameter.Value --output text 2>/dev/null || echo "")
+          [ -n "$MOCK" ] || echo "::warning::no mock-integration pin for $R — prod will deploy WITHOUT the identity agencies, and the backend will park every application. Run main first, then promote."
           echo "promoting $BACKEND"
-          bash infra/deploy-service.sh prod "$BACKEND" "$FRONTEND"
+          bash infra/deploy-service.sh prod "$BACKEND" "$FRONTEND" "$MOCK"

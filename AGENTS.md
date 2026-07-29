@@ -65,11 +65,18 @@ only build and test. Three consequences worth holding on to:
   checksum mismatch and a crash-loop, repairable only by destroying the schema (*Database
   repair* → `reset`). A `Schema-validation:` error is the opposite problem: your entity is
   ahead of your changelog, so write the changeset rather than repairing anything.
-- **`backend/` and `frontend/` stay at the repo root** — the system compose builds them by
-  path (`./neo-03/backend`). Moving them breaks the whole stack.
-- **Keep `./mvnw test` green** (19 tests, H2, no Docker). Real-MySQL tests are `*IT`
-  (Testcontainers) and run on `./mvnw verify` — in CI automatically, locally with
-  `-DskipITs=false` and Docker up.
+- **`backend/`, `frontend/` and `mock-integration/` stay at the repo root** — the system compose
+  builds them by path (`./neo-03/backend`). Moving them breaks the whole stack.
+- **`mock-integration/` is a service, not a test fixture.** It is the mocked government identity
+  sources this module calls over HTTP, it is built by `docker compose up`, and on AWS it is a
+  **third container in the same ECS task** (reached on `127.0.0.1:8081`). Changing its wire
+  format means changing `IdVerificationClient` in the same commit — nothing else talks to it.
+- **Keep `./mvnw test` green** — 71 in `backend/`, 30 in `mock-integration/`, all on H2 or no
+  database at all, no Docker. Real-MySQL tests are `*IT` (Testcontainers) and run on
+  `./mvnw verify` — in CI automatically, locally with `-DskipITs=false` and Docker up.
+- **Never log `identityDocument.documentId`.** It goes to the identity agencies and appears
+  nowhere else — not a log line, not an error message, not the callback.
+  `IdVerificationClientTest.documentIdIsNeverLogged` fails the build if it leaks.
 - **Everything configurable is an env var.** One image serves as any slot; anything
   hard-coded per-service breaks that.
 
@@ -77,7 +84,12 @@ only build and test. Three consequences worth holding on to:
 
 | Where | What |
 |---|---|
-| `backend/.../service/ApplicationService.java` | **the one file a team edits** — log, store, report |
+| `backend/.../service/ApplicationService.java` | **the decision** — which confidence means what, and the reason code that explains it |
+| `backend/.../service/ProviderGateway.java` | **how hard to try**: 3 attempts on the primary (1s/2s backoff), then one on the fallback |
+| `backend/.../integrations/idprovider/` | one HTTP call to one agency, and the circuit breaker |
+| `backend/.../service/ReasonCode.java` | the six LOCKED `KYC_*` codes. Do not invent more — ask |
+| `mock-integration/` | the mocked agencies. Control panel at `http://localhost:8081` |
+| `mock-integration/.../service/ConfidenceBook.java` | documentId → confidence, **deterministic**. Where the pinned fixtures live |
 | `backend/.../integrations/orchestrator/` | the wire: 3 records + the client. **Fixed** — see its `package-info.java` |
 | `backend/.../controller/ApplicationController.java` | the whole contract HTTP surface |
 | `backend/.../integrations/orchestrator/Application.java` | the customer's form as Java — nine nested records. **Read it before writing rules** |

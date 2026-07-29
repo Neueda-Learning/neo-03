@@ -31,7 +31,12 @@ public class KycRecord {
     @Column(name = "document_id", nullable = false, length = 128)
     private String documentId;
 
-    @Column(name = "issuing_country", nullable = false, length = 2)
+    // Three, not two. The contract's ground rule is ISO alpha-2, and the corpus contains an
+    // application that breaks it ("PRT"). At length 2 that insert throws in MySQL strict mode, so
+    // the case is lost entirely and the applicant gets a stack trace as an explanation — a module
+    // must be able to STORE a malformed value in order to report which field was wrong.
+    // Widened in changeset 005.
+    @Column(name = "issuing_country", nullable = false, length = 3)
     private String issuingCountry;
 
     @Column(name = "expiry_date", nullable = false)

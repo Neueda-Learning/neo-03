@@ -124,9 +124,41 @@ alone:
 docker compose up --build
 # http://localhost:9000   THE SIDECAR — send applications, watch what comes back
 # http://localhost:5173   React UI — what this service has seen and answered
+# http://localhost:8081   THE IDENTITY AGENCIES — turn one off, watch the module cope
 # http://localhost:8080/  zero-build status page served by Spring Boot
 # http://localhost:8080/health · /info · /swagger-ui.html
+# http://localhost:8080/api/v1/provider/health   circuit-breaker state per agency
 ```
+
+### The identity agencies (`mock-integration/`)
+
+This module's topic is *the provider is slow or down*, so it ships one: a **National Identity
+Agency** (primary) and a **Tax Agency** (fallback), both in `mock-integration/`. It answers
+every call by default — every misbehaviour dial seeds to off — and a document's confidence is a
+**pure function of its number**, so a checkpoint reproduces on every machine and every run.
+
+```bash
+# Maria Nowak's passport always scores exactly 92 — the accept threshold, on purpose
+curl -sX POST localhost:8081/api/v1/agencies/national/verifications \
+  -H 'content-type: application/json' \
+  -d '{"fullName":"Maria Nowak","dateOfBirth":"1996-04-11",
+       "document":{"type":"PASSPORT","documentId":"ZS1234567",
+                   "issuingCountry":"PL","expiryDate":"2031-02-28"}}'
+
+# Take the PRIMARY down and send an application: 3 attempts (1s, 2s), then the tax agency
+# answers and the applicant still verifies — with KYC_FAILED_OVER_TO_SECONDARY on the callback.
+curl -sX PUT localhost:8081/api/v1/admin/config/national \
+  -H 'content-type: application/json' \
+  -d '{"latencyMs":0,"failureRatePct":0,"killSwitch":true}'
+
+# Take BOTH down and the application is PARKED for a human, never rejected: an outage says
+# nothing about the applicant. After 5 consecutive failures the breaker opens and later
+# applications cost no network time at all.
+curl -sX POST localhost:8081/api/v1/admin/reset      # put it all back, live
+```
+
+One document always fails whatever the dials say: **`ZZ0000000`** (scenario SIM-14) — the
+corpus's convention for "make your mock provider fail".
 
 **First run after adding the sidecar: `docker compose down -v` once.** MySQL creates the
 sidecar's schema from `db/init/*.sql`, and it runs those only on an empty data directory — an
@@ -214,13 +246,24 @@ Every knob is an env var, which is how one image serves as any slot:
 | `SERVICE_NAME` | `Identity Verification (KYC)` | display name |
 | `SERVICE_DOMAIN` | `unassigned` | the BIAN domain you own, reported on `/info` |
 | `ORCHESTRATOR_URL` | `http://localhost:9000` | where callbacks go — see the three targets below |
-| `MOCKED_DEPENDENCIES` | *(empty)* | comma-separated systems you fake — the register, served live |
+| `MOCKED_DEPENDENCIES` | `national-identity-agency,tax-agency` | comma-separated systems you fake — the register, served live |
 | `WORKER_POOL_SIZE` | `8` | threads available to run your rules |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | see compose | this service's own schema |
+| `ID_PROVIDER_BASE_URL` | `http://localhost:8081` | the identity agencies — `http://mock-integration:8081` in compose, `http://127.0.0.1:8081` on Fargate (same task) |
+| `ID_PROVIDER_TIMEOUT_MS` | `2000` | how long **one** attempt may take |
+| `ID_PROVIDER_MAX_ATTEMPTS` / `ID_PROVIDER_BACKOFF_MS` | `3` / `1000,2000` | the ladder against the **primary**; the fallback always gets exactly one |
+| `ID_PROVIDER_ACCEPT_THRESHOLD` / `ID_PROVIDER_REJECT_THRESHOLD` | `92` / `60` | `>=` verifies, `<=` fails, strictly between parks for a human |
+| `ID_PROVIDER_BREAKER_THRESHOLD` / `_COOLDOWN_MS` | `5` / `30000` | consecutive failures before we stop calling, and for how long |
 
-**There are no decision knobs.** What this module answers comes from your rules, not from a
-weight, a seed or a delay. Those env vars existed when the decision was a seeded coin flip; the
-coin flip is gone.
+**There are no decision knobs.** What this module answers comes from your rules and from what the
+identity agencies report — not from a weight, a seed or a delay. Those env vars existed when the
+decision was a seeded coin flip; the coin flip is gone.
+
+**The thresholds are not knobs either — they are compliance policy.** They are configuration so
+that moving accept from 92 to 95 is a decision the risk team can make, not a code change, a
+review and a deploy. Startup fails if reject is not below accept: inverted thresholds do not
+throw at decision time, they silently empty the review band so no borderline case ever reaches a
+human.
 | `SIDECAR_PORT` / `SIDECAR_REF` / `MODULE_URL` | `9000` / `v1` / `http://backend:8080` | the mock orchestrator (`SIDECAR_REF` is the git ref compose builds) |
 
 ### The three things `ORCHESTRATOR_URL` can point at

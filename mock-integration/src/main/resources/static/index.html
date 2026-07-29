@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Identity sources — control panel</title>
+  <!--
+    Zero build. No npm, no bundler, no design system.
+
+    The module's React UI next door is the PRODUCT — it is what a bank employee uses, and it
+    looks the part. This is a dev tool for turning a provider off and watching what happens,
+    and giving it a build step would mean a second npm install in CI and a second chance to
+    hit the `npm ci exits 0 with a broken node_modules` trap this project has already been
+    bitten by. One file, served straight off the classpath.
+
+    It is deliberately styled to look NOTHING like the module's UI. Two similar windows side
+    by side all day is how you end up reading the provider's log and thinking it is yours.
+  -->
+  <style>
+    :root {
+      --bg: #10131a; --panel: #171b24; --line: #262c38;
+      --text: #e8ecf4; --dim: #98a2b6;
+      --primary: #6ee7b7; --warn: #fbbf24; --bad: #f87171;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+    }
+    header {
+      padding: 22px 24px; border-bottom: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+    }
+    h1 { margin: 0; font-size: 19px; letter-spacing: .2px; }
+    .sub { color: var(--dim); font-size: 13px; }
+    main { padding: 24px; max-width: 1000px; }
+    .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+    .card h2 { margin: 0 0 2px; font-size: 16px; }
+    .card .role { color: var(--dim); font-size: 12.5px; margin-bottom: 14px; }
+    .state { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .state.up { background: rgba(110,231,183,.14); color: var(--primary); }
+    .state.slow { background: rgba(251,191,36,.14); color: var(--warn); }
+    .state.down { background: rgba(248,113,113,.14); color: var(--bad); }
+    label { display: block; margin: 12px 0 4px; font-size: 12.5px; color: var(--dim); }
+    input[type=number] {
+      width: 100%; padding: 8px 10px; background: #0d1017; color: var(--text);
+      border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); font-size: 14px;
+    }
+    .row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+    .row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--bad); }
+    .row label { margin: 0; color: var(--text); font-size: 14px; }
+    button {
+      margin-top: 14px; padding: 9px 14px; border-radius: 6px; border: 1px solid var(--line);
+      background: #1e2532; color: var(--text); font-size: 14px; cursor: pointer;
+    }
+    button:hover { border-color: var(--primary); }
+    button.primary { background: var(--primary); color: #06281c; border-color: var(--primary); font-weight: 600; }
+    .calls { margin-top: 14px; font-family: var(--mono); font-size: 13px; color: var(--dim); }
+    .calls b { color: var(--text); }
+    .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .note {
+      margin-top: 24px; padding: 14px 16px; border-left: 3px solid var(--line);
+      color: var(--dim); font-size: 13px;
+    }
+    .note code { font-family: var(--mono); color: var(--text); }
+    #msg { font-size: 13px; color: var(--dim); }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Identity sources <span class="sub">— mock government agencies</span></h1>
+  <span class="sub" id="version"></span>
+</header>
+
+<main>
+  <div class="bar">
+    <button class="primary" id="reset">Reset both to healthy</button>
+    <span id="msg"></span>
+  </div>
+
+  <div class="grid" id="cards"></div>
+
+  <div class="note">
+    <p><b>These dials exist so the bank's resilience is something you can watch.</b>
+      Kill <b>national</b> only and the module should burn its retry budget, fall back to the tax
+      agency, and still verify the applicant. Kill <b>both</b> and it should park the application
+      for a human — never reject it, because an outage says nothing about the applicant.</p>
+    <p>Set <code>latencyMs</code> above <code>2000</code> to force timeouts instead of refusals: same
+      ending, but it proves the timeout rather than the connection.</p>
+    <p>One document always fails, whatever these dials say: <code>ZZ0000000</code>. That is the
+      scenario corpus's convention for "make your mock provider fail".</p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
