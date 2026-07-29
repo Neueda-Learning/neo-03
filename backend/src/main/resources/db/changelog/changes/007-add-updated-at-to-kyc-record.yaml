@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-add-updated-at-to-kyc-record
+      author: neo-03
+      changes:
+        - addColumn:
+            tableName: kyc_record
+            columns:
+              - column:
+                  name: updated_at
+                  type: timestamp
+      rollback:
+        - dropColumn:
+            tableName: kyc_record
+            columnName: updated_at

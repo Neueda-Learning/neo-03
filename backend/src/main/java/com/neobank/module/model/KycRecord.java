@@ -43,6 +43,9 @@ public class KycRecord {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
     protected KycRecord() {
     }
 
@@ -97,6 +100,10 @@ public class KycRecord {
         this.decisionSource = decisionSource;
     }
 
+    public void markUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
     public String getName() {
         return name;
     }
@@ -119,5 +126,9 @@ public class KycRecord {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }

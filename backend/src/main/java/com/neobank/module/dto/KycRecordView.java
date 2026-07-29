@@ -14,7 +14,8 @@ public record KycRecordView(
         String documentId,
         String issuingCountry,
         LocalDate expiryDate,
-        Instant createdAt) {
+        Instant createdAt,
+        Instant updatedAt) {
 
     public static KycRecordView of(KycRecord row) {
         return new KycRecordView(
@@ -27,6 +28,7 @@ public record KycRecordView(
                 row.getDocumentId(),
                 row.getIssuingCountry(),
                 row.getExpiryDate(),
-                row.getCreatedAt());
+                row.getCreatedAt(),
+                row.getUpdatedAt());
     }
 }
