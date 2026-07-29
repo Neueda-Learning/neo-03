@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, SideBrand, SideNav, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import ReviewQueueScreen from './components/ReviewQueueScreen.jsx';
-import ProviderControl from './components/ProviderControl.jsx';
+import ConfigurationScreen from './components/ConfigurationScreen.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -11,14 +11,14 @@ const HEALTH_MS = 10000;
 /**
  * The screens in the side menu.
  *
- * ⚠️ One real screen and one placeholder — the placeholder is there so the menu shows you
- * where your own screens go, and they are `disabled` so nobody clicks into nothing. Replace them
- * with what your business topic actually needs; the operator UI is a graded deliverable, and a
- * single read-only list is not one.
+ * What this module was asked and what it answered; the analyst's backlog; and the dials on the
+ * mocked identity agencies. Nothing here is disabled — the skeleton's placeholder entries are
+ * gone, because a menu item that is not a screen is a trap.
  */
 const SCREENS = [
   { id: 'applications', label: 'Applications' },
   { id: 'review-queue', label: 'Review Queue' },
+  { id: 'configuration', label: 'Configuration' },
 ];
 
 /**
@@ -100,10 +100,6 @@ export default function App() {
           <div className="app-side-status">
             <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
           </div>
-          {/* Under the nav, not in it: it configures the mocked provider rather than moving you
-              anywhere. On AWS this is the ONLY way to reach those dials — the mock is a container
-              inside this task with no route of its own. */}
-          <ProviderControl />
         </>
       }
       footer="One of ten modules · applications arrive from the orchestrator, never from this UI"
@@ -128,6 +124,7 @@ export default function App() {
           info={info}
         />
       )}
+      {screen === 'configuration' && <ConfigurationScreen info={info} />}
     </AppShell>
   );
 }
