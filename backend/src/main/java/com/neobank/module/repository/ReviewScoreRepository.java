@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ReviewScoreRepository extends JpaRepository<ReviewScore, String> {
 
-    List<ReviewScore> findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc(String reviewResult);
+    List<ReviewScore> findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc(String reviewResult);
 
     Optional<ReviewScore> findFirstByKycIdAndReviewResult(String kycId, String reviewResult);
 }

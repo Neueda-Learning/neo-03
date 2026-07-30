@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ReviewFailRepository extends JpaRepository<ReviewFail, String> {
 
-    List<ReviewFail> findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc(String reviewResult);
+    List<ReviewFail> findByReviewResultOrderByCreatedAtAscReviewFailIdAsc(String reviewResult);
 
     Optional<ReviewFail> findFirstByKycIdAndReviewResult(String kycId, String reviewResult);
 }
