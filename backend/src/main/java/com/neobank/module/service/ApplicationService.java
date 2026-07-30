@@ -53,7 +53,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(ApplicationService.class);
-    private static final int REVIEW_QUEUE_LIMIT = 10;
     private static final DateTimeFormatter DAY_MONTH_YEAR = DateTimeFormatter.ofPattern("dd-MM-uuuu");
 
     private final Executor executor;
@@ -200,18 +199,17 @@ public class ApplicationService {
                 .toList();
     }
 
-    /** The earliest ten records across both review tables, not ten from each. */
+    /** The complete manual-review queue, oldest first across both review tables. */
     @Transactional(readOnly = true)
     public List<ReviewQueueView> findEarliestReviewQueue() {
         List<QueueCandidate> candidates = Stream.concat(
-                        reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW").stream()
+                        reviewFails.findByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW").stream()
                                 .map(QueueCandidate::from),
-                        reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW").stream()
+                        reviewScores.findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW").stream()
                                 .map(QueueCandidate::from))
                 .sorted(Comparator.comparing(QueueCandidate::createdAt)
                         .thenComparing(QueueCandidate::source)
                         .thenComparing(QueueCandidate::reviewId))
-                .limit(REVIEW_QUEUE_LIMIT)
                 .toList();
 
         if (candidates.isEmpty()) {

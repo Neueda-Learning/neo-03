@@ -60,9 +60,9 @@ class ReviewQueueServiceTest {
         ReviewScore sameTimeScore = score("S-2", "KYC-3", "2026-07-21T09:00:00Z", 68);
         ReviewFail sameTimeFail = fail("F-2", "KYC-2", "2026-07-21T09:00:00Z");
         ReviewFail lateFail = fail("F-3", "KYC-4", "2026-07-22T09:00:00Z");
-        when(reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW"))
+        when(reviewScores.findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW"))
                 .thenReturn(List.of(earlyScore, sameTimeScore));
-        when(reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW"))
+        when(reviewFails.findByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW"))
                 .thenReturn(List.of(sameTimeFail, lateFail));
         List<KycRecord> records = List.of(
                 record("KYC-1", "APP-1"),
@@ -82,7 +82,7 @@ class ReviewQueueServiceTest {
     }
 
     @Test
-    void capsTheCombinedQueueAtTenRows() {
+    void returnsTheWholeCombinedQueueInsteadOfTruncatingItAtTenRows() {
         List<ReviewFail> fails = java.util.stream.IntStream.range(0, 10)
                 .mapToObj(index -> fail("F-" + index, "KF-" + index,
                         "2026-07-22T%02d:00:00Z".formatted(index)))
@@ -91,23 +91,26 @@ class ReviewQueueServiceTest {
                 .mapToObj(index -> score("S-" + index, "KS-" + index,
                         "2026-07-21T%02d:00:00Z".formatted(index), 70))
                 .toList();
-        when(reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW")).thenReturn(fails);
-        when(reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW")).thenReturn(scores);
+        when(reviewFails.findByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW")).thenReturn(fails);
+        when(reviewScores.findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW")).thenReturn(scores);
         List<KycRecord> records = java.util.stream.IntStream.range(0, 10)
                 .mapToObj(index -> record("KS-" + index, "APP-S-" + index))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        records.addAll(java.util.stream.IntStream.range(0, 10)
+                .mapToObj(index -> record("KF-" + index, "APP-F-" + index))
+                .toList());
         when(kycRecords.findAllById(any())).thenReturn(records);
 
         assertThat(service.findEarliestReviewQueue())
-                .hasSize(10)
+                .hasSize(20)
                 .extracting(ReviewQueueView::source)
-                .containsOnly("SCORE");
+                .contains("SCORE", "FAIL");
     }
 
     @Test
     void returnsAnEmptyQueueWithoutLookingUpKycRecords() {
-        when(reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW")).thenReturn(List.of());
-        when(reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW")).thenReturn(List.of());
+        when(reviewFails.findByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW")).thenReturn(List.of());
+        when(reviewScores.findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW")).thenReturn(List.of());
 
         assertThat(service.findEarliestReviewQueue()).isEmpty();
         verifyNoInteractions(kycRecords);
@@ -193,9 +196,9 @@ class ReviewQueueServiceTest {
     @Test
     void failsWhenAQueueEntryHasNoMatchingKycRecord() {
         ReviewFail review = fail("F-9", "KYC-9", "2026-07-21T09:00:00Z");
-        when(reviewFails.findTop10ByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW"))
+        when(reviewFails.findByReviewResultOrderByCreatedAtAscReviewFailIdAsc("REVIEW"))
                 .thenReturn(List.of(review));
-        when(reviewScores.findTop10ByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW"))
+        when(reviewScores.findByReviewResultOrderByCreatedAtAscReviewScoreIdAsc("REVIEW"))
                 .thenReturn(List.of());
         when(kycRecords.findAllById(any())).thenReturn(List.of());
 
