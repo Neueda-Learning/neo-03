@@ -122,7 +122,7 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
       header: 'Applicant',
       render: (item) => applicantNames.get(item.applicationId) || '-',
     },
-    { key: 'age', header: 'Age', render: (item) => queueAge(item.createdAt) },
+    { key: 'age', header: 'Waiting time', render: (item) => queueAge(item.createdAt) },
     {
       key: 'state',
       header: 'State',
@@ -241,7 +241,7 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
                   <dd>{workings(selected)}</dd>
                 </div>
                 <div>
-                  <dt>Queued</dt>
+                  <dt>Waiting time</dt>
                   <dd>{queueAge(selected.createdAt)}</dd>
                 </div>
                 <div>
