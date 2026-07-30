@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.neobank</groupId>
+    <artifactId>neobank-mock-integration</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>neobank-mock-integration</name>
+    <description>
+        The mocked government identity sources this module stands in for: a National Identity
+        Agency and, as a fallback, a Tax Agency. Answers a confidence score for an applicant's
+        identity document, and can be made to misbehave on demand so the backend's retry ladder
+        and circuit breaker are demonstrable rather than merely present.
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <!--
+      DELIBERATELY SHORT. Compare it with ../backend/pom.xml, which carries JPA, Liquibase,
+      the MySQL driver, H2, Testcontainers and a failsafe/surefire split.
+
+      This service is STATELESS: the dials live in memory and the confidence scores are a
+      function of the document id. So there is no schema to migrate, no grant to add in
+      db/init/, no *IT to run, and — the reason that matters on this platform — no share of
+      the measured 60-connection ceiling the eleven services divide between them (the
+      arithmetic is in ../backend/src/main/resources/application.yml).
+
+      `mvn test` and `mvn verify` are the same thing here, and neither needs Docker.
+    -->
+    <dependencies>
+        <!-- Web / REST -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Bean validation: the dials are operator input and get field-level 400s -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- Actuator: liveness/readiness probes behind our own /health -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- JUnit 5, Mockito, AssertJ, MockMvc -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

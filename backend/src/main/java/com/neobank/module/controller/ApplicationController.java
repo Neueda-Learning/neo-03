@@ -1,6 +1,7 @@
 package com.neobank.module.controller;
 
 import com.neobank.module.dto.KycRecordView;
+import com.neobank.module.dto.ThirdPartyAttemptView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -85,5 +87,23 @@ public class ApplicationController {
     @GetMapping
     public List<KycRecordView> list() {
         return applications.findAll();
+    }
+
+    /**
+     * The provider calls behind one case — what the board's "view details" panel draws.
+     *
+     * <p><b>Keyed on {@code kycId}, not {@code applicationId}, and that is not a slip.</b>
+     * {@code application_id} has no unique constraint anywhere in the changelog, and a re-sent
+     * application mints a fresh {@code kycId} — so one application can legitimately own several
+     * cases, and an application-keyed lookup would have to guess which one you meant. The rows
+     * {@link #list()} returns are already identified by {@code kycId}, so this is the same key the
+     * screen already holds.</p>
+     *
+     * <p>Read-only, like every operator endpoint here. Nothing in this module lets a decision be
+     * set from outside the review flow.</p>
+     */
+    @GetMapping("/{kycId}/attempts")
+    public List<ThirdPartyAttemptView> attempts(@PathVariable String kycId) {
+        return applications.findAttempts(kycId);
     }
 }

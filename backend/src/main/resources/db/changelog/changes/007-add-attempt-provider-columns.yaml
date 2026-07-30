@@ -1,0 +1,56 @@
+# The attempt log grows up: it now records WHICH identity source was called, WHEN the call went
+# out, and how long it took. Before this the module had no real provider, so there was only ever
+# one source and nothing to distinguish.
+#
+# APPEND-ONLY, as this changelog's master file says. Everything numbered below this is applied on
+# dev and in every running database — editing any of them changes its checksum and Liquibase
+# refuses to start the service, which reads as a broken deploy rather than an edited migration.
+#
+# Numbered 007 and not 005: 005 and 006 were taken by the decision-source and issuing-country
+# changes while this branch was open. Liquibase keys a change set on id + author + file, so two
+# files both called 005 would in fact both apply — but then the number stops meaning anything and
+# the include order below is the only remaining definition of sequence. Renumbering is free here
+# because this one has never been applied anywhere.
+databaseChangeLog:
+  - changeSet:
+      id: 007-add-attempt-provider-columns
+      author: neo-03
+      changes:
+        - addColumn:
+            tableName: third_party_attempts
+            columns:
+              # NATIONAL or TAX. Nullable: rows written before there were two sources cannot
+              # answer this, and inventing a backfill value would assert something untrue about
+              # calls that were never made over a network at all.
+              - column:
+                  name: agency
+                  type: VARCHAR(32)
+              # When the call went out — NOT when the row was saved.
+              #
+              # All of a case's attempts are saved in one batch after the ladder finishes, so
+              # created_at is identical across them and proves nothing. The gaps between
+              # requested_at values are the evidence that the backoff really waited 1s and then
+              # 2s, which is the one thing about a retry ladder you cannot verify by reading it.
+              - column:
+                  name: requested_at
+                  type: TIMESTAMP
+              - column:
+                  name: latency_ms
+                  type: INT
+              - column:
+                  name: provider_ref
+                  type: VARCHAR(64)
+
+      rollback:
+        - dropColumn:
+            tableName: third_party_attempts
+            columnName: agency
+        - dropColumn:
+            tableName: third_party_attempts
+            columnName: requested_at
+        - dropColumn:
+            tableName: third_party_attempts
+            columnName: latency_ms
+        - dropColumn:
+            tableName: third_party_attempts
+            columnName: provider_ref

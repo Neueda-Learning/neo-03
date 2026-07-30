@@ -6,7 +6,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.neobank.module.integrations.idprovider.Agency;
 import com.neobank.module.integrations.idprovider.IdVerificationClient;
+import com.neobank.module.integrations.idprovider.ProviderAnswer;
+import com.neobank.module.integrations.orchestrator.Application;
+import java.util.List;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,25 +53,25 @@ class ModuleApplicationTests {
             return Runnable::run;
         }
 
-                @Bean
-                IdVerificationClient idVerificationClient() {
-                        return new IdVerificationClient() {
-                                @Override
-                                public Integer verifyPassport() {
-                                        return 95;
-                                }
-
-                                @Override
-                                public Integer verifyNationalId() {
-                                        return 95;
-                                }
-
-                                @Override
-                                public Integer verifyDrivingLicense() {
-                                        return 95;
-                                }
-                        };
+        /**
+         * Stands in for the identity agencies, which are a separate container and are not running
+         * during {@code mvn test}.
+         *
+         * <p>Substituted at the CLIENT rather than at {@link com.neobank.module.service.ProviderGateway}
+         * on purpose: the gateway is where the retry ladder, the backoff and the circuit breaker
+         * live, and mocking it out would mean this full-boot test never wires any of them. This way
+         * everything below the socket is the real thing.</p>
+         */
+        @Bean
+        IdVerificationClient idVerificationClient() {
+            return new IdVerificationClient(null, "http://localhost:9") {
+                @Override
+                public ProviderAnswer verify(Agency agency, Application application) {
+                    return new ProviderAnswer("test-ref", agency.name(), 95,
+                            List.of(new ProviderAnswer.Check("documentGenuine", true)));
                 }
+            };
+        }
     }
 
     /** SIM-01 from the sidecar corpus, trimmed to what these assertions read. */
@@ -122,8 +126,12 @@ class ModuleApplicationTests {
                 // The UI's identity box reads team + service. A team that never sets SERVICE_TEAM
                 // ships a screen claiming to be team 01's, so the field has to actually be served.
                 .andExpect(jsonPath("$.team").value("Team 03"))
+                // Deliverable #4's "what has been mocked" register, as live config. Both agencies
+                // are named: a register that says "id-verification-provider" while the module in
+                // fact stands in for two distinct government sources is not an honest answer.
                 .andExpect(jsonPath("$.mockedDependencies", hasSize(2)))
-                .andExpect(jsonPath("$.mockedDependencies[0]").value("id-verification-provider"));
+                .andExpect(jsonPath("$.mockedDependencies[0]").value("national-identity-agency"))
+                .andExpect(jsonPath("$.mockedDependencies[1]").value("tax-agency"));
     }
 
     @Test

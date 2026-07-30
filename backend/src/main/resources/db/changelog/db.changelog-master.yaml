@@ -1,6 +1,13 @@
 # Liquibase master changelog — this service owns its schema and nothing else's.
 # Add one file per change set under changes/ and include it here in order.
 # Never edit an already-applied change set; add a new one.
+#
+# NOTE — there are two files numbered 007, from two branches that were open at the same time.
+# Liquibase keys a change set on id + author + FILE, so both apply and neither shadows the other;
+# what the collision really costs is that the number no longer identifies a change on its own, and
+# THIS INCLUDE ORDER becomes the only definition of sequence. Nothing here depends on the order
+# between them (one adds a column to kyc_record, the other to third_party_attempts), so it is
+# untidy rather than dangerous. Pick the next free number by looking at this list, not by counting.
 databaseChangeLog:
   - include:
       file: db/changelog/changes/001-create-demo-showcase.yaml
@@ -16,3 +23,11 @@ databaseChangeLog:
       file: db/changelog/changes/006-widen-issuing-country.yaml
   - include:
       file: db/changelog/changes/007-add-updated-at-to-kyc-record.yaml
+  - include:
+      file: db/changelog/changes/007-add-attempt-provider-columns.yaml
+  - include:
+      file: db/changelog/changes/008-restore-issuing-country-not-null.yaml
+  - include:
+      file: db/changelog/changes/009-add-reason-code-to-kyc-record.yaml
+  - include:
+      file: db/changelog/changes/010-attempt-requested-at-milliseconds.yaml

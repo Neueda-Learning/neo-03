@@ -21,4 +21,4 @@ Team=Team 03
 # Comma-separated external systems this module fakes — deliverable #4's "what has been
 # mocked" register, as live config rather than a paragraph that goes stale. Empty is a
 # claim, not an omission: it says this module talks to nothing outside itself.
-MockedDependencies=id-verification-provider
+MockedDependencies=national-identity-agency,tax-agency

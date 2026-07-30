@@ -10,7 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-import com.neobank.module.integrations.idprovider.IdVerificationClient;
+import com.neobank.module.integrations.idprovider.Agency;
+import com.neobank.module.integrations.idprovider.AttemptResult;
+import com.neobank.module.integrations.idprovider.ProviderAnswer;
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
@@ -23,21 +25,27 @@ import com.neobank.module.repository.KycRecordRepository;
 import com.neobank.module.repository.ReviewFailRepository;
 import com.neobank.module.repository.ReviewScoreRepository;
 import com.neobank.module.repository.ThirdPartyAttemptRepository;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * The three things the placeholder does, and the guard that keeps a failure reportable.
+ * The decision, and nothing else.
  *
- * <p>No Spring, no database, no HTTP — the service takes a request and calls two collaborators, so
- * the test is a handful of lines. Keep it that way as you replace the body: logic that needs a
- * running container to test is logic you will stop testing.</p>
+ * <p>The provider gateway is mocked, so these tests are about one question only: given what the
+ * identity source said, what does this module answer and how does it explain itself? How many times
+ * it called, how long it waited and when it gave up are {@link ProviderGatewayTest}'s business.</p>
+ *
+ * <p>No Spring, no database, no HTTP. Logic that needs a running container to test is logic that
+ * stops being tested.</p>
  */
 class ApplicationServiceTest {
 
@@ -46,7 +54,7 @@ class ApplicationServiceTest {
     private ReviewFailRepository reviewFails;
     private ReviewScoreRepository reviewScores;
     private OrchestratorClient orchestrator;
-    private IdVerificationClient idVerificationClient;
+    private ProviderGateway gateway;
     private ApplicationService service;
 
     @BeforeEach
@@ -56,7 +64,7 @@ class ApplicationServiceTest {
         reviewFails = mock(ReviewFailRepository.class);
         reviewScores = mock(ReviewScoreRepository.class);
         orchestrator = mock(OrchestratorClient.class);
-        idVerificationClient = mock(IdVerificationClient.class);
+        gateway = mock(ProviderGateway.class);
         Clock clock = Clock.fixed(Instant.parse("2026-07-28T00:00:00Z"), ZoneOffset.UTC);
         service = new ApplicationService(
                 Runnable::run,
@@ -65,10 +73,14 @@ class ApplicationServiceTest {
                 reviewFails,
                 reviewScores,
                 orchestrator,
-                idVerificationClient,
-                clock);
+                gateway,
+                clock,
+                92,
+                60);
         when(kycRecords.save(any(KycRecord.class))).thenAnswer(call -> call.getArgument(0));
     }
+
+    // ---- fixtures ----------------------------------------------------------------------
 
     private static ApplicationRequest request(String id) {
         return request(id, "DRIVING_LICENCE", "2029-08-31");
@@ -80,27 +92,65 @@ class ApplicationServiceTest {
 
     private static ApplicationRequest request(String id, String documentType, String expiryDate) {
         return request(id, documentType, expiryDate, "GB");
-        }
+    }
 
-        private static ApplicationRequest request(String id,
-                              String documentType,
-                              String expiryDate,
-                              String issuingCountry) {
+    private static ApplicationRequest request(String id, String documentType, String expiryDate,
+                                              String issuingCountry) {
         Application application = new Application(
                 id, "MOBILE_APP", "2026-07-25T09:14:00Z",
                 new Application.Applicant("Jonas Meyer", "1979-02-14", null, null, null, null,
                         null, null, null, null, null),
                 new Application.IdentityDocument(
-                documentType, "MEYER701794JM9AB", issuingCountry, expiryDate),
+                        documentType, "MEYER701794JM9AB", issuingCountry, expiryDate),
                 null, null,
                 new Application.Product("CREDIT_CARD_STANDARD", 2500),
                 null, null);
         return new ApplicationRequest(id, "corr-1", "process-application", application);
     }
 
+    private ThirdPartyAttempt attemptRow(AttemptResult result, Integer confidence) {
+        return new ThirdPartyAttempt("att-1", "kyc-1", 1, "DRIVING_LICENCE", result.name(),
+                confidence, "…", Agency.NATIONAL.name(), Instant.parse("2026-07-28T00:00:00Z"),
+                12, "nat-abc");
+    }
+
+    /** The provider answered with this confidence, first time, on the primary. */
+    private void providerAnswers(int confidence) {
+        providerAnswers(confidence, true, Agency.NATIONAL, false);
+    }
+
+    private void providerAnswers(int confidence, boolean genuine, Agency agency, boolean failedOver) {
+        ProviderAnswer answer = new ProviderAnswer("nat-abc", agency.name(), confidence,
+                List.of(new ProviderAnswer.Check("documentGenuine", genuine),
+                        new ProviderAnswer.Check("nameMatched", true)));
+        when(gateway.verify(any(), any())).thenReturn(new ProviderGateway.ProviderOutcome(
+                answer, agency, failedOver,
+                List.of(attemptRow(AttemptResult.ANSWERED, confidence)), null));
+    }
+
+    /** Nobody answered — the ladder and the fallback were both spent. */
+    private void providerNeverAnswers() {
+        when(gateway.verify(any(), any())).thenReturn(new ProviderGateway.ProviderOutcome(
+                null, null, false,
+                List.of(attemptRow(AttemptResult.TIMEOUT, null),
+                        attemptRow(AttemptResult.TIMEOUT, null),
+                        attemptRow(AttemptResult.TIMEOUT, null),
+                        attemptRow(AttemptResult.REFUSED, null)),
+                AttemptResult.REFUSED));
+    }
+
+    private String reportedComment(String applicationId, Decision decision) {
+        ArgumentCaptor<String> comment = ArgumentCaptor.forClass(String.class);
+        verify(orchestrator).applicationStatusUpdate(eq(applicationId), eq(decision), comment.capture());
+        return comment.getValue();
+    }
+
+    // ---- the bands ---------------------------------------------------------------------
+
     @Test
+    @DisplayName("A high confidence verifies, is stored, and is reported with KYC_VERIFIED")
     void storesTheApplicationAndReportsItAccepted() {
-        when(idVerificationClient.verifyDrivingLicense()).thenReturn(96);
+        providerAnswers(96);
 
         service.processApplication(request("SIM-01"));
 
@@ -109,68 +159,157 @@ class ApplicationServiceTest {
         assertThat(saved.getValue().getKycId()).isNotBlank();
         assertThat(saved.getValue().getApplicationId()).isEqualTo("SIM-01");
         assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
         assertThat(saved.getValue().getName()).isEqualTo("Jonas Meyer");
         assertThat(saved.getValue().getType()).isEqualTo("DRIVING_LICENCE");
-        assertThat(saved.getValue().getDocumentId()).isEqualTo("MEYER701794JM9AB");
         assertThat(saved.getValue().getIssuingCountry()).isEqualTo("GB");
         assertThat(saved.getValue().getExpiryDate()).isEqualTo(LocalDate.of(2029, 8, 31));
+        // The same code that goes on the wire is now also on the record, so the operator screen
+        // and the orchestrator cannot tell different stories about one decision.
+        assertThat(saved.getValue().getReasonCode()).isEqualTo("KYC_VERIFIED");
 
-        ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
-        verify(thirdPartyAttempts).saveAll(attempts.capture());
-        assertThat(attempts.getValue()).hasSize(1);
-        assertThat(attempts.getValue().getFirst().getResult()).isEqualTo("SUCCESS");
-        assertThat(attempts.getValue().getFirst().getConfidence()).isEqualTo(96);
-
-        verify(orchestrator).applicationStatusUpdate("SIM-01", Decision.ACCEPTED,
-            "driving_licence verified on attempt 1 (confidence 96)");
+        verify(thirdPartyAttempts).saveAll(any());
+        assertThat(reportedComment("SIM-01", Decision.ACCEPTED))
+                .startsWith("KYC_VERIFIED")
+                .contains("96");
     }
 
     @Test
-    void theAsyncEntryPointDoesTheSameWorkThroughTheExecutor() {
-        when(idVerificationClient.verifyDrivingLicense()).thenReturn(95);
+    @DisplayName("Exactly the accept threshold PASSES — the >= boundary, not >")
+    void confidenceExactlyAtTheAcceptThresholdVerifies() {
+        // Maria Nowak's checkpoint. The whole reason the mock pins her at 92 rather than 93: a
+        // module that reads this boundary as ">" parks a customer it should have approved, and
+        // every other test in this class would still be green.
+        providerAnswers(92);
 
-        service.processApplicationAsync(request("SIM-02"));
+        service.processApplication(request("SIM-12"));
 
         verify(kycRecords).save(any(KycRecord.class));
-        verify(orchestrator).applicationStatusUpdate(eq("SIM-02"), eq(Decision.ACCEPTED), any());
+        assertThat(reportedComment("SIM-12", Decision.ACCEPTED)).startsWith("KYC_VERIFIED");
     }
 
     @Test
+    @DisplayName("One below the accept threshold parks for review")
+    void confidenceOneBelowAcceptGoesToReview() {
+        providerAnswers(91);
+
+        service.processApplication(request("SIM-13"));
+
+        assertThat(reportedComment("SIM-13", Decision.REFERRED)).startsWith("KYC_LOW_CONFIDENCE");
+    }
+
+    @Test
+    @DisplayName("Exactly the reject threshold FAILS — the <= boundary, mirroring accept")
+    void confidenceExactlyAtTheRejectThresholdFails() {
+        providerAnswers(60);
+
+        service.processApplication(request("SIM-14"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(reportedComment("SIM-14", Decision.REJECTED)).startsWith("KYC_LOW_CONFIDENCE");
+    }
+
+    @Test
+    @DisplayName("One above the reject threshold parks rather than failing")
+    void confidenceOneAboveRejectGoesToReview() {
+        providerAnswers(61);
+
+        service.processApplication(request("SIM-15"));
+
+        assertThat(reportedComment("SIM-15", Decision.REFERRED)).startsWith("KYC_LOW_CONFIDENCE");
+    }
+
+    @Test
+    @DisplayName("A borderline score parks the case AND queues it with the score attached")
+    void refersForManualReviewWhenConfidenceIsBorderline() {
+        providerAnswers(74);
+
+        service.processApplication(request("SIM-09", "PASSPORT", "2029-08-31"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("REVIEW");
+
+        ArgumentCaptor<ReviewScore> review = ArgumentCaptor.forClass(ReviewScore.class);
+        verify(reviewScores).save(review.capture());
+        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
+        assertThat(review.getValue().getConfidence()).isEqualTo(74);
+        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
+        assertThat(review.getValue().getManualReviewComment()).isNull();
+        // A low score is a scored review, not a failed-provider review — different queue, and
+        // the analyst needs to know which one they are looking at.
+        verify(reviewFails, never()).save(any());
+
+        assertThat(reportedComment("SIM-09", Decision.REFERRED))
+                .startsWith("KYC_LOW_CONFIDENCE")
+                .contains("74");
+    }
+
+    // ---- the gates that beat the bands ---------------------------------------------------
+
+    @Test
+    @DisplayName("A document reported not genuine FAILS even with a passing confidence")
+    void aForgedDocumentFailsWhateverTheConfidence() {
+        // 99 is comfortably above the accept threshold. A convincing forgery scores well — that is
+        // what makes it convincing — so the forgery check has to come first or it never fires.
+        providerAnswers(99, false, Agency.NATIONAL, false);
+
+        service.processApplication(request("SIM-16"));
+
+        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
+        verify(kycRecords).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(reportedComment("SIM-16", Decision.REJECTED)).startsWith("KYC_DOCUMENT_INVALID");
+    }
+
+    @Test
+    @DisplayName("An expired document fails WITHOUT the provider ever being called")
     void rejectsADocumentThatExpiresInLessThanSixMonths() {
         service.processApplication(request("SIM-04", "2027-01-27"));
 
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-04",
-                Decision.REJECTED,
-                "identity document expires in less than 6 months");
+        assertThat(saved.getValue().getReasonCode()).isEqualTo("KYC_DOCUMENT_EXPIRED");
+        assertThat(reportedComment("SIM-04", Decision.REJECTED)).startsWith("KYC_DOCUMENT_EXPIRED");
+        // Zero attempt rows and zero gateway calls. This is the assertion that proves no provider
+        // fee was paid for an answer the date alone gave us.
         verify(thirdPartyAttempts, never()).saveAll(any());
-        verify(idVerificationClient, never()).verifyDrivingLicense();
+        verify(gateway, never()).verify(any(), any());
     }
 
     @Test
-    void acceptsADocumentThatExpiresInExactlySixMonths() {
-        when(idVerificationClient.verifyDrivingLicense()).thenReturn(92);
-
-        service.processApplication(request("SIM-05", "2027-01-28"));
+    @DisplayName("A non-ISO issuing country fails locally — the provider is never called")
+    void rejectsAnInvalidIssuingCountryBeforeTryingToVerify() {
+        // SIM-09 carries "PRT" where the contract's ground rule says alpha-2. The value is STORED
+        // rather than refused at the door: a module that cannot hold a malformed value cannot say
+        // which field was wrong, and the applicant gets a stack trace instead of a sentence.
+        service.processApplication(request("SIM-09", "PASSPORT", "2030-12-31", "PRT"));
 
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
-        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(saved.getValue().getIssuingCountry()).isEqualTo("PRT");
         assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-05", Decision.ACCEPTED, "driving_licence verified on attempt 1 (confidence 92)");
+        assertThat(reportedComment("SIM-09", Decision.REJECTED))
+                .startsWith("KYC_DOCUMENT_INVALID")
+                .contains("PRT");
+        // Same proof as the expiry pre-check: zero calls, so no provider fee for an answer the
+        // field itself already gave us.
+        verify(gateway, never()).verify(any(), any());
+        verify(thirdPartyAttempts, never()).saveAll(any());
     }
 
     @Test
+    @DisplayName("A dd-MM-uuuu expiry date is parsed, not treated as a crash")
     void acceptsDayMonthYearExpiryDatesFromTheSidecarCorpus() {
-        when(idVerificationClient.verifyPassport()).thenReturn(94);
+        // The other half of SIM-09: "31-12-2030". Dates are String on the wire on purpose, and
+        // this is the module choosing to understand a second format rather than refuse the
+        // request outright.
+        providerAnswers(94);
 
         service.processApplication(request("SIM-09", "PASSPORT", "31-12-2030"));
 
@@ -180,144 +319,115 @@ class ApplicationServiceTest {
         assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
         assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-09",
-                Decision.ACCEPTED,
-                "passport verified on attempt 1 (confidence 94)");
+        assertThat(reportedComment("SIM-09", Decision.ACCEPTED)).startsWith("KYC_VERIFIED");
     }
 
     @Test
-    void rejectsAnInvalidIssuingCountryBeforeTryingToPersistOrVerify() {
-        service.processApplication(request("SIM-09", "PASSPORT", "31-12-2030", "PRT"));
+    @DisplayName("An automated decision is stamped AUTO, so an override can be told apart later")
+    void anAutomatedDecisionIsMarkedAuto() {
+        providerAnswers(96);
+
+        service.processApplication(request("SIM-01"));
 
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
-        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
         assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
-        assertThat(saved.getValue().getIssuingCountry()).isEqualTo("PRT");
-
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-09",
-                Decision.REJECTED,
-                "application.identityDocument.issuingCountry has invalid country code: PRT");
-        verify(idVerificationClient, never()).verifyPassport();
-        verify(thirdPartyAttempts, never()).saveAll(any());
     }
 
     @Test
-    void rejectsWhenThirdPartyConfidenceIsLow() {
-        when(idVerificationClient.verifyDrivingLicense()).thenReturn(40);
+    @DisplayName("Exactly six months to expiry still goes to the provider")
+    void acceptsADocumentThatExpiresInExactlySixMonths() {
+        providerAnswers(92);
 
-        service.processApplication(request("SIM-08"));
+        service.processApplication(request("SIM-05", "2027-01-28"));
 
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
-        assertThat(saved.getValue().getStatus()).isEqualTo("FAILED");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
-
-        ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
-        verify(thirdPartyAttempts).saveAll(attempts.capture());
-        assertThat(attempts.getValue()).singleElement().satisfies(attempt -> {
-            assertThat(attempt.getResult()).isEqualTo("FAILED");
-            assertThat(attempt.getConfidence()).isEqualTo(40);
-        });
-
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-08", Decision.REJECTED,
-                "driving_licence verification failed on attempt 1 (confidence 40)");
+        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
+        verify(gateway).verify(any(), any());
     }
 
-    @Test
-    void refersForManualReviewWhenThirdPartyConfidenceIsBorderline() {
-        when(idVerificationClient.verifyPassport()).thenReturn(75);
-
-        service.processApplication(request("SIM-09", "PASSPORT", "2029-08-31"));
-
-        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
-        verify(kycRecords).save(saved.capture());
-        assertThat(saved.getValue().getStatus()).isEqualTo("REVIEW");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
-
-        ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
-        verify(thirdPartyAttempts).saveAll(attempts.capture());
-        assertThat(attempts.getValue()).singleElement().satisfies(attempt -> {
-            assertThat(attempt.getDocumentType()).isEqualTo("PASSPORT");
-            assertThat(attempt.getResult()).isEqualTo("REVIEW");
-            assertThat(attempt.getConfidence()).isEqualTo(75);
-        });
-
-        ArgumentCaptor<ReviewScore> review = ArgumentCaptor.forClass(ReviewScore.class);
-        verify(reviewScores).save(review.capture());
-        assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
-        assertThat(review.getValue().getConfidence()).isEqualTo(75);
-        assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
-        assertThat(review.getValue().getManualReviewComment()).isNull();
-        verify(reviewFails, never()).save(any());
-
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-09", Decision.REFERRED,
-                "passport requires manual review on attempt 1 (confidence 75)");
-    }
+    // ---- outage and failover ------------------------------------------------------------
 
     @Test
-    void refersForManualReviewWhenPassportProviderFailsThreeTimes() {
-        when(idVerificationClient.verifyPassport()).thenReturn(-1, -1, -1);
+    @DisplayName("An outage PARKS the case — never rejects it, and never says the applicant failed")
+    void refersWhenNoIdentitySourceAnswers() {
+        providerNeverAnswers();
 
         service.processApplication(request("SIM-06", "PASSPORT", "2029-08-31"));
 
         ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
         verify(kycRecords).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo("REVIEW");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
 
         ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
         verify(thirdPartyAttempts).saveAll(attempts.capture());
-        assertThat(attempts.getValue()).hasSize(3);
-        assertThat(attempts.getValue()).allSatisfy(attempt -> {
-            assertThat(attempt.getDocumentType()).isEqualTo("PASSPORT");
-            assertThat(attempt.getResult()).isEqualTo("UNAVAILABLE");
-            assertThat(attempt.getConfidence()).isNull();
-        });
+        assertThat(attempts.getValue()).hasSize(4);
 
+        // A failed-provider review, not a scored one: there is no score to review.
         ArgumentCaptor<ReviewFail> review = ArgumentCaptor.forClass(ReviewFail.class);
         verify(reviewFails).save(review.capture());
         assertThat(review.getValue().getKycId()).isEqualTo(saved.getValue().getKycId());
         assertThat(review.getValue().getReviewResult()).isEqualTo("REVIEW");
-        assertThat(review.getValue().getManualReviewComment()).isNull();
         verify(reviewScores, never()).save(any());
 
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-06",
-                Decision.REFERRED,
-                "passport verification unavailable after 3 attempts; manual review required");
+        assertThat(reportedComment("SIM-06", Decision.REFERRED))
+                .startsWith("KYC_PROVIDER_UNAVAILABLE")
+                .contains("4 attempts");
     }
 
     @Test
-    void acceptsNationalIdWithoutThirdPartyCall() {
-        when(idVerificationClient.verifyNationalId()).thenReturn(95);
+    @DisplayName("A failover is reported alongside the outcome, not instead of it")
+    void failoverAppendsItsOwnReasonCode() {
+        providerAnswers(95, true, Agency.TAX, true);
 
-        service.processApplication(request("SIM-07", "NATIONAL_ID", "2029-08-31"));
+        service.processApplication(request("SIM-17"));
 
-        ArgumentCaptor<KycRecord> saved = ArgumentCaptor.forClass(KycRecord.class);
-        verify(kycRecords).save(saved.capture());
-        assertThat(saved.getValue().getStatus()).isEqualTo("VERIFIED");
-        assertThat(saved.getValue().getDecisionSource()).isEqualTo("AUTO");
-        ArgumentCaptor<List<ThirdPartyAttempt>> attempts = ArgumentCaptor.forClass(List.class);
-        verify(thirdPartyAttempts).saveAll(attempts.capture());
-        assertThat(attempts.getValue()).singleElement().satisfies(attempt -> {
-            assertThat(attempt.getDocumentType()).isEqualTo("NATIONAL_ID");
-            assertThat(attempt.getResult()).isEqualTo("SUCCESS");
-            assertThat(attempt.getConfidence()).isEqualTo(95);
-        });
-        verify(orchestrator).applicationStatusUpdate(
-                "SIM-07", Decision.ACCEPTED, "national_id verified on attempt 1 (confidence 95)");
+        // Both facts survive: the applicant verified, AND the verdict came from a source that
+        // never saw the document. An operator reviewing this case needs to know both.
+        assertThat(reportedComment("SIM-17", Decision.ACCEPTED))
+                .startsWith("KYC_VERIFIED")
+                .endsWith("KYC_FAILED_OVER_TO_SECONDARY");
     }
 
     @Test
+    @DisplayName("The fallback cannot answer documentGenuine, and that is not a forgery")
+    void aMissingDocumentCheckIsNotTreatedAsAFailedOne() {
+        // The tax agency reports three checks and never mentions documentGenuine. Reading a
+        // missing check as a failed one would make EVERY failover reject the applicant — the
+        // exact opposite of what a fallback is for.
+        ProviderAnswer taxAnswer = new ProviderAnswer("tax-abc", "TAX_AGENCY", 95,
+                List.of(new ProviderAnswer.Check("nameMatched", true),
+                        new ProviderAnswer.Check("dobConsistent", true)));
+        when(gateway.verify(any(), any())).thenReturn(new ProviderGateway.ProviderOutcome(
+                taxAnswer, Agency.TAX, true,
+                List.of(attemptRow(AttemptResult.ANSWERED, 95)), null));
+
+        service.processApplication(request("SIM-18"));
+
+        assertThat(reportedComment("SIM-18", Decision.ACCEPTED)).startsWith("KYC_VERIFIED");
+    }
+
+    // ---- plumbing -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("The async entry point does the same work through the executor")
+    void theAsyncEntryPointDoesTheSameWorkThroughTheExecutor() {
+        providerAnswers(95);
+
+        service.processApplicationAsync(request("SIM-02"));
+
+        verify(kycRecords).save(any(KycRecord.class));
+        verify(orchestrator).applicationStatusUpdate(eq("SIM-02"), eq(Decision.ACCEPTED), any());
+    }
+
+    @Test
+    @DisplayName("A crash is still reported rather than leaving the journey to time out")
     void aFailureIsStillReportedRatherThanLeavingTheJourneyToTimeOut() {
         // The failure mode this guard exists for: a module that throws never reports, and the
         // orchestrator then waits out its 30s timeout and ends the journey FAILED with nothing to
         // explain it. REFERRED with a reason is far more useful than silence.
+        providerAnswers(95);
         doThrow(new IllegalStateException("database on fire"))
                 .when(kycRecords).save(any(KycRecord.class));
 
@@ -331,26 +441,74 @@ class ApplicationServiceTest {
     }
 
     @Test
+    @DisplayName("Inverted thresholds fail at STARTUP, not silently at decision time")
+    void invertedThresholdsAreRejectedOnConstruction() {
+        // A reject threshold above accept does not throw when a decision is made — it quietly
+        // empties the REVIEW band, so every borderline case passes or fails and nothing ever
+        // reaches a human. That is a compliance failure that looks like a working system.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new ApplicationService(
+                        Runnable::run, kycRecords, thirdPartyAttempts, reviewFails, reviewScores,
+                        orchestrator, gateway, Clock.systemUTC(), 60, 92))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be below");
+    }
+
+    @Test
+    @DisplayName("The board shows what was stored")
     void theBoardShowsWhatWasStored() {
         when(kycRecords.findAllByOrderByCreatedAtDescKycIdDesc())
-                .thenReturn(java.util.List.of(new KycRecord(
-                        "KYC-1",
-                        "SIM-01",
-                        "VERIFIED",
-                        "AUTO",
-                        "Jonas Meyer",
-                        "DRIVING_LICENCE",
-                        "MEYER701794JM9AB",
-                        "GB",
-                        LocalDate.of(2029, 8, 31))));
+                .thenReturn(List.of(new KycRecord(
+                        "KYC-1", "SIM-01", "VERIFIED", "AUTO", "Jonas Meyer", "DRIVING_LICENCE",
+                        "MEYER701794JM9AB", "GB", LocalDate.of(2029, 8, 31))));
 
         assertThat(service.findAll())
                 .singleElement()
                 .satisfies(view -> {
                     assertThat(view.applicationId()).isEqualTo("SIM-01");
                     assertThat(view.status()).isEqualTo("VERIFIED");
-                    assertThat(view.decisionSource()).isEqualTo("AUTO");
                     assertThat(view.name()).isEqualTo("Jonas Meyer");
                 });
+    }
+
+    @Test
+    @DisplayName("The ladder comes back in the order it happened, mapped to the view")
+    void findAttemptsReturnsTheLadderOldestFirst() {
+        when(kycRecords.findById("KYC-1"))
+                .thenReturn(Optional.of(new KycRecord("KYC-1", "SIM-01", "REVIEW", "AUTO",
+                        "Jonas Meyer", "PASSPORT", "MEYER701794JM9AB", "GB",
+                        LocalDate.of(2029, 8, 31))));
+        when(thirdPartyAttempts.findByKycIdOrderByAttemptNumberAsc("KYC-1")).thenReturn(List.of(
+                attemptRow(AttemptResult.TIMEOUT, null),
+                attemptRow(AttemptResult.ANSWERED, 92)));
+
+        assertThat(service.findAttempts("KYC-1"))
+                .extracting(view -> view.result() + "/" + view.agency())
+                .containsExactly("TIMEOUT/NATIONAL", "ANSWERED/NATIONAL");
+    }
+
+    @Test
+    @DisplayName("A known case with no attempts is an empty list — the provider was never called")
+    void findAttemptsReturnsEmptyForACaseDecidedLocally() {
+        when(kycRecords.findById("KYC-LOCAL"))
+                .thenReturn(Optional.of(new KycRecord("KYC-LOCAL", "SIM-13", "FAILED", "AUTO",
+                        "Henrik Larsen", "PASSPORT", "DK1180552", "DK",
+                        LocalDate.of(2025, 11, 30))));
+        when(thirdPartyAttempts.findByKycIdOrderByAttemptNumberAsc("KYC-LOCAL"))
+                .thenReturn(List.of());
+
+        assertThat(service.findAttempts("KYC-LOCAL")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An unknown case throws, so it cannot be read as a case that made no calls")
+    void findAttemptsThrowsForAnUnknownCase() {
+        // The distinction the 404 exists for. Without the lookup, a typo'd id would return [] and
+        // the screen would confidently report "the provider was never called" about a case that
+        // is not there at all.
+        when(kycRecords.findById("KYC-404")).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.findAttempts("KYC-404"))
+                .isInstanceOf(NoSuchElementException.class)
+                .hasMessageContaining("KYC-404");
     }
 }

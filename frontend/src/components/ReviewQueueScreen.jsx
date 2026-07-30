@@ -10,6 +10,8 @@ import {
   Textarea,
 } from '../design-system';
 import { api } from '../api.js';
+import { AttemptTrail } from './AttemptTrail.jsx';
+import { useAttempts } from '../useAttempts.js';
 
 const PAGE_SIZE = 10;
 
@@ -28,13 +30,17 @@ function workings(item) {
   return [item.source, confidence, item.comment].filter(Boolean).join(' - ');
 }
 
-export default function ReviewQueueScreen({ queue, applications, error, focusedKycId }) {
+export default function ReviewQueueScreen({ queue, applications, error, focusedKycId, info }) {
   const [selectedId, setSelectedId] = useState(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
   const [page, setPage] = useState(1);
+
+  // The same panel the board uses, so an analyst does not have to leave the queue to find out
+  // WHY a case is parked — which is the first thing they need and the whole reason it is here.
+  const attempts = useAttempts();
 
   const applicantNames = useMemo(
     () => new Map(applications.map((application) => [application.applicationId, application.name])),
@@ -102,6 +108,13 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
     }
   }
 
+  // The queue row carries the review, not the decision. The outcome and its reason code live on
+  // the board row for the same case, which App already has loaded.
+  const recordsByKycId = useMemo(
+    () => new Map(applications.map((record) => [record.kycId, record])),
+    [applications]
+  );
+
   const columns = [
     { key: 'applicationId', header: 'Reference', mono: true },
     {
@@ -115,6 +128,24 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
       header: 'State',
       tight: true,
       render: () => <Badge tone="warning">WAITING</Badge>,
+    },
+    {
+      key: 'details',
+      header: 'Evidence',
+      tight: true,
+      // A real <button>, not the row click: the row click already means "select this case for the
+      // panel on the right", and one gesture cannot mean two things. It is also the only way the
+      // affordance is reachable by keyboard — DataTable puts no key handler on the <tr>.
+      render: (item) => (
+        <button
+          type="button"
+          className="app-status-link"
+          aria-expanded={attempts.isOpen(item.kycId)}
+          onClick={() => attempts.toggle(item.kycId)}
+        >
+          {attempts.isOpen(item.kycId) ? 'Hide ▾' : 'Evidence ▸'}
+        </button>
+      ),
     },
   ];
 
@@ -153,6 +184,16 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
               setActionError(null);
               setActionMessage(null);
             }}
+            expandedKey={attempts.expandedKey}
+            renderExpanded={(item) => (
+              <AttemptTrail
+                record={recordsByKycId.get(item.kycId) ?? { status: item.reviewResult }}
+                attempts={attempts.attemptsFor(item.kycId)}
+                loading={attempts.loadingFor(item.kycId)}
+                error={attempts.errorFor(item.kycId)}
+                thresholds={info?.idProvider}
+              />
+            )}
             footnote={`page ${page} of ${totalPages}`}
             footnoteOnly
             empty={

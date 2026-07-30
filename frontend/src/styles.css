@@ -205,3 +205,230 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * The attempt rail — every provider call as a dot on a horizontal line.
+ *
+ * App-owned, not a design-system component: the system's StepTrail is a row of dots with hover
+ * titles, which is right for a whole journey in a table cell and wrong for this, where the target
+ * and the cost are the point and a hover-only fact is one most people never see. DESIGN.md §8
+ * sanctions exactly this — build it in your own components, styled with --ds-* variables ONLY.
+ * There is not a raw colour or a raw length below.
+ * ------------------------------------------------------------------------------------------- */
+
+.app-rail {
+  display: flex;
+  align-items: flex-start;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* A ladder is at most four steps, but a narrow window should scroll rather than crush them. */
+  overflow-x: auto;
+}
+
+.app-rail__step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-1);
+  text-align: center;
+  /* The gutter between neighbouring labels. SHORT_CIRCUITED is fifteen characters and the outcome
+   * words are the contract's, not ours to shorten, so the space has to come from here. */
+  padding: 0 var(--ds-space-3);
+}
+
+/* The connector into this step, from the previous dot's centre to this one's.
+ *
+ * THREE FLEX CHILDREN — line, label, line — not one rule with the label painted on top of it. The
+ * obvious version gives the label a background to punch a hole in the rule, and that silently does
+ * nothing here: under the glass theme --ds-color-surface is `transparent`, so the line ran through
+ * the text. A structural gap cannot fail that way on any background. */
+.app-rail__link {
+  position: absolute;
+  /* Anchor the connector's CENTRE to the dot's centre, not its top edge.
+   *
+   * Positioning by `top` looks equivalent and is not: this element's height is whatever its
+   * tallest child is — 15.5px with a wait label in it, 1px without — so a fixed top put the rule
+   * 6.8px BELOW the dots on the segments that carry a label, and on the centre for the one that
+   * does not. Two different heights, neither of them anchored to the thing they join.
+   * Half the dot, then pull back half of itself, and the label's size stops mattering. */
+  top: calc(var(--ds-space-4) / 2);
+  transform: translateY(-50%);
+  right: 50%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.app-rail__line {
+  flex: 1 1 0;
+  height: var(--ds-border-width);
+  background: var(--ds-color-border-strong);
+}
+
+/* The wait belongs BETWEEN two attempts rather than under either of them, so it sits in the break
+ * in the connector. */
+.app-rail__wait {
+  flex: 0 0 auto;
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-2xs);
+  white-space: nowrap;
+}
+
+.app-rail__dot {
+  width: var(--ds-space-4);
+  height: var(--ds-space-4);
+  border-radius: var(--ds-radius-pill);
+  border: var(--ds-border-width) solid transparent;
+  background: var(--ds-step-accent, var(--ds-color-border));
+  /* Sits above the connector so the line appears to run behind it. */
+  position: relative;
+  z-index: 1;
+}
+
+.app-rail__dot--positive { --ds-step-accent: var(--ds-tone-positive-accent); }
+.app-rail__dot--warning  { --ds-step-accent: var(--ds-tone-warning-accent); }
+.app-rail__dot--negative { --ds-step-accent: var(--ds-tone-negative-accent); }
+.app-rail__dot--info     { --ds-step-accent: var(--ds-tone-info-accent); }
+/* FILLED, like every other outcome. It was hollow to say "nothing was called", but an outline
+ * among solids reads as unfinished rather than as a distinct state — and the words under it
+ * ("not called") carry that meaning better than an absence of paint ever did. */
+.app-rail__dot--neutral  { --ds-step-accent: var(--ds-tone-neutral-accent); }
+
+/* WHO was called. Unmuted and first, because an outcome means nothing until you know which source
+ * produced it. */
+.app-rail__target {
+  font-size: var(--ds-text-xs);
+  font-weight: 600;
+  color: var(--ds-color-text);
+  overflow-wrap: anywhere;
+}
+
+/* The outcome word, in the tone's INK rather than its accent. Accent is the mark's colour and is
+ * not held to a text contrast ratio; ink is. */
+.app-rail__outcome {
+  font-size: var(--ds-text-2xs);
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.app-rail__outcome--positive { color: var(--ds-tone-positive-ink); }
+.app-rail__outcome--warning  { color: var(--ds-tone-warning-ink); }
+.app-rail__outcome--negative { color: var(--ds-tone-negative-ink); }
+.app-rail__outcome--info     { color: var(--ds-tone-info-ink); }
+.app-rail__outcome--neutral  { color: var(--ds-tone-neutral-ink); }
+
+/* Muted inside the toned outcome line: the result is the signal, the cost is supporting detail. */
+.app-rail__cost {
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The confidence scale — where a score fell, against the thresholds that decide what happens.
+ *
+ * Bands are drawn TO SCALE from the live thresholds, so the reject zone really is six times the
+ * width of the accept zone and a 74 visibly sits nearer the lower boundary. That is the whole
+ * point: it replaced a sentence listing the same three numbers, and a position is easier to read
+ * than an inequality. --ds-* tokens only.
+ * ------------------------------------------------------------------------------------------- */
+
+.app-scale {
+  /* Room on both sides for a marker sitting at 0 or at 100 without clipping its bubble. */
+  padding: 0 var(--ds-space-4);
+}
+
+.app-scale__track {
+  position: relative;
+  display: flex;
+  height: var(--ds-space-5);
+  border-radius: var(--ds-radius-sm);
+  overflow: visible;
+}
+
+.app-scale__band {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: var(--ds-band-surface);
+  /* Hairlines between the zones so the boundaries are legible even where two bands are close in
+   * value — the numbers under them say where, this says that there IS one. */
+  border-right: var(--ds-border-width) solid var(--ds-color-canvas);
+}
+
+.app-scale__band:first-child { border-radius: var(--ds-radius-sm) 0 0 var(--ds-radius-sm); }
+.app-scale__band:last-child  { border-radius: 0 var(--ds-radius-sm) var(--ds-radius-sm) 0; border-right: 0; }
+
+/* -text, not -ink. `ink` is the tone AS TEXT on the page background and is held to 4.5:1 there;
+ * on the tone's own surface it is dark-on-dark — #8c3629 on the declined red was unreadable.
+ * `-surface` + `-text` is the pair the design system already tests, via Badge. */
+.app-scale__band--negative { --ds-band-surface: var(--ds-tone-negative-surface); --ds-band-ink: var(--ds-tone-negative-text); }
+.app-scale__band--info     { --ds-band-surface: var(--ds-tone-info-surface);     --ds-band-ink: var(--ds-tone-info-text); }
+.app-scale__band--positive { --ds-band-surface: var(--ds-tone-positive-surface); --ds-band-ink: var(--ds-tone-positive-text); }
+
+/* The band the score actually landed in, filled rather than tinted. Colour is never the only
+ * signal — the marker sits inside this band too — but it is the one that should catch the eye. */
+.app-scale__band--live {
+  background: var(--ds-band-surface);
+  box-shadow: inset 0 0 0 var(--ds-border-width-strong, 2px) var(--ds-color-text);
+}
+
+.app-scale__band-label {
+  font-size: var(--ds-text-2xs);
+  color: var(--ds-band-ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* A narrow band (accept is 8% of the scale) must not force the flex item wider than its share. */
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* The reading, pinned to its own position rather than printed beside the scale. */
+.app-scale__marker {
+  position: absolute;
+  top: calc(var(--ds-space-2) * -1);
+  bottom: calc(var(--ds-space-2) * -1);
+  width: var(--ds-border-width-strong, 2px);
+  background: var(--ds-marker-ink);
+  transform: translateX(-50%);
+}
+
+.app-scale__marker--positive { --ds-marker-ink: var(--ds-tone-positive-ink); }
+.app-scale__marker--info     { --ds-marker-ink: var(--ds-tone-info-ink); }
+.app-scale__marker--negative { --ds-marker-ink: var(--ds-tone-negative-ink); }
+.app-scale__marker--neutral  { --ds-marker-ink: var(--ds-tone-neutral-ink); }
+
+.app-scale__value {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 var(--ds-space-1);
+  color: var(--ds-marker-ink);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.app-scale__ticks {
+  position: relative;
+  height: var(--ds-space-4);
+}
+
+/* The two numbers that decide something. 0 and 100 are not worth the ink. */
+.app-scale__tick {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--ds-color-text-muted);
+  font-family: var(--ds-figure-family, var(--ds-font-mono));
+  font-size: var(--ds-text-2xs);
+}

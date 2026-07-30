@@ -25,7 +25,11 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOriginPatterns(allowedOriginPatterns)
-                .allowedMethods("GET", "POST", "OPTIONS")
+                // PUT is here for the provider control panel. Leaving it out does not fail
+                // loudly: the browser's preflight is refused and the button silently does
+                // nothing, while every curl against the same endpoint keeps working, because a
+                // same-origin request sends no Origin header to check.
+                .allowedMethods("GET", "POST", "PUT", "OPTIONS")
                 .allowedHeaders("*");
     }
 }

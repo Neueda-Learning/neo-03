@@ -24,4 +24,14 @@ service:
   team: Team 03
   domain: kyc
   orchestrator-url: http://localhost:9
-  mocked-dependencies: id-verification-provider, sanctions-list
+  # The two government sources this module stands in for. Named individually rather than as one
+  # "id-verification-provider", because they are two different systems with two different
+  # contracts, and the register is only useful if it says what would actually have to be bought.
+  mocked-dependencies: national-identity-agency, tax-agency
+
+# Also a dead port. The identity agencies are a separate container that is NOT running during
+# `mvn test`, and ModuleApplicationTests substitutes the client anyway — this is here so that a
+# test which forgets to substitute it fails fast on a refused connection instead of reaching
+# whatever happens to be listening on 8081 on the machine running the build.
+id-provider:
+  base-url: http://localhost:9

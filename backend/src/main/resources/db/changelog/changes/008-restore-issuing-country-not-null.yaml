@@ -1,0 +1,30 @@
+# Puts back the NOT NULL that 006 removed without meaning to.
+#
+# MySQL's ALTER TABLE ... MODIFY replaces the WHOLE column definition, so any attribute the new
+# definition omits is dropped. Liquibase's modifyDataType emits exactly that and says nothing
+# about nullability, so widening issuing_country from VARCHAR(2) to VARCHAR(16) also made it
+# nullable. Measured, not assumed:
+#
+#     CREATE TABLE t (c VARCHAR(2) NOT NULL);   -- IS_NULLABLE = NO
+#     ALTER TABLE t MODIFY c VARCHAR(16);       -- IS_NULLABLE = YES
+#
+# Nothing complained, and nothing would have. KycRecord still declares
+# @Column(nullable = false), but Hibernate's ddl-auto=validate checks names and types and NOT
+# nullability — so the schema and the entity disagreed silently, and the first null would have
+# been accepted by the database and then failed somewhere far away from here.
+#
+# A new change set rather than an edit to 006: 006 has already run.
+databaseChangeLog:
+  - changeSet:
+      id: 008-restore-issuing-country-not-null
+      author: neo-03
+      changes:
+        - addNotNullConstraint:
+            tableName: kyc_record
+            columnName: issuing_country
+            columnDataType: VARCHAR(16)
+      rollback:
+        - dropNotNullConstraint:
+            tableName: kyc_record
+            columnName: issuing_country
+            columnDataType: VARCHAR(16)

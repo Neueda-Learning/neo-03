@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy THIS repo's one service to an environment, pinned to the given image digests.
 #
-#   ./infra/deploy-service.sh <env> <backend-image> <frontend-image>
+#   ./infra/deploy-service.sh <env> <backend-image> <frontend-image> [mock-image]
 #
 # Reads the per-repo config from infra/env/<env>.params (ServiceName, PathPrefix, priority,
 # schema, role, …). Resolves the shared wiring the service template can't carry itself — the
@@ -13,9 +13,14 @@
 # hours. The template creates no IAM, so no --capabilities is needed.
 set -euo pipefail
 
-ENV="${1:?usage: deploy-service.sh <env> <backend-image> <frontend-image>}"
+ENV="${1:?usage: deploy-service.sh <env> <backend-image> <frontend-image> [mock-image]}"
 BACKEND_IMAGE="${2:?backend image required}"
 FRONTEND_IMAGE="${3:?frontend image required}"
+# OPTIONAL 4th argument: the mocked identity agencies, deployed as a THIRD container in the same
+# task. Empty (or absent) sets MockImage="" in the template, which switches HasMockIntegration
+# off and produces the two-container task this repo shipped before — so an older caller, and a
+# prod promote whose SSM pin predates the mock, both still work instead of failing.
+MOCK_IMAGE="${4:-}"
 REGION="${AWS_REGION:?AWS_REGION must be set}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -49,7 +54,15 @@ deploy() {  # $1 = desired count
       FrontendImage="$FRONTEND_IMAGE" \
       DbEndpoint="$DB_ENDPOINT" \
       AlbDnsName="$ALB_DNS" \
-      DesiredCount="$1"
+      DesiredCount="$1" \
+      MockImage="$MOCK_IMAGE"
+      # MockImage is passed ALWAYS, even when empty. `aws cloudformation deploy` accepts
+      # `Key=` with an empty value; OMITTING it instead routes through UsePreviousValue, whose
+      # handling of a parameter that is new to the stack depends on the runner's CLI version.
+      # Passing the empty string means the behaviour is the same everywhere.
+      #
+      # Note it comes AFTER "${PARAMS[@]}": later keys win, so do not also put MockImage= in
+      # infra/env/*.params — it would be silently overridden and mislead the next reader.
 }
 
 # Park a BRAND-NEW stack at zero tasks first: a task that starts before its schema exists

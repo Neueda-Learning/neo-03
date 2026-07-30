@@ -12,9 +12,19 @@ import {
   Toolbar,
 } from '../design-system';
 import { statusLabel, statusTone, STATUSES, time } from '../status.js';
+import { AttemptTrail } from './AttemptTrail.jsx';
+import { useAttempts } from '../useAttempts.js';
 
 const FILTERS = ['All', ...STATUSES];
 const PAGE_SIZE = 10;
+
+/**
+ * One function, used by DataTable's `rowKey` AND by the expanded-row state.
+ *
+ * They have to agree exactly — DataTable expands the row whose key `===` `expandedKey` — and the
+ * cheapest way to guarantee that is to have one definition rather than two that look alike.
+ */
+const rowKeyOf = (r) => r.kycId ?? r.applicationId;
 
 /**
  * Everything this module has answered.
@@ -31,6 +41,9 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
+
+  // One row open at a time, fetched on first open and kept. Shared with the review queue.
+  const attempts = useAttempts();
 
   const counts = useMemo(
     () =>
@@ -101,6 +114,29 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
     },
     { key: 'createdAt', header: 'Received', render: (r) => time(r.createdAt) },
     { key: 'updatedAt', header: 'Reviewed', render: (r) => (r.updatedAt ? time(r.updatedAt) : '-') },
+    {
+      key: 'details',
+      header: 'Details',
+      tight: true,
+      // A real <button>, not a click on the <tr>. DataTable puts only onClick on the row — no
+      // tabIndex, no key handler, no role — so a row-click affordance is mouse-only, which the
+      // design system's accessibility rules do not allow. This is the same in-cell button idiom
+      // the Status column already uses, and it gets the focus ring for free.
+      render: (r) => {
+        const key = rowKeyOf(r);
+        const open = attempts.isOpen(key);
+        return (
+          <button
+            type="button"
+            className="app-status-link"
+            aria-expanded={open}
+            onClick={() => attempts.toggle(key)}
+          >
+            {open ? 'Hide details ▾' : 'View details ▸'}
+          </button>
+        );
+      },
+    },
   ];
 
   return (
@@ -133,7 +169,17 @@ export default function RequestsScreen({ requests, error, info, onOpenReviewQueu
         rows={pagedMatches}
         maxRows={null}
         total={matches.length}
-        rowKey={(r) => r.kycId ?? r.applicationId}
+        rowKey={rowKeyOf}
+        expandedKey={attempts.expandedKey}
+        renderExpanded={(r) => (
+          <AttemptTrail
+            record={r}
+            attempts={attempts.attemptsFor(rowKeyOf(r))}
+            loading={attempts.loadingFor(rowKeyOf(r))}
+            error={attempts.errorFor(rowKeyOf(r))}
+            thresholds={info?.idProvider}
+          />
+        )}
         footnote={`page ${page} of ${totalPages}`}
         footnoteOnly
         empty={
