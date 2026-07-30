@@ -237,7 +237,7 @@ export default function ReviewQueueScreen({ queue, applications, error, focusedK
                   <dd>{selected.reviewResult}</dd>
                 </div>
                 <div>
-                  <dt>Workings</dt>
+                  <dt>Review reason</dt>
                   <dd>{workings(selected)}</dd>
                 </div>
                 <div>
