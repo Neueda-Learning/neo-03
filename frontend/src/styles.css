@@ -52,6 +52,10 @@
   max-width: 9ch;
   color: rgba(23, 54, 49, 0.96);
   text-wrap: balance;
+  /* At the clamp's upper end (viewport >= ~1960px) "Verification" alone is wider than the
+   * 9ch box and has no space to wrap at, so it overflowed past the card's edge. Same fix
+   * already used above for .app-rail__target etc. */
+  overflow-wrap: anywhere;
 }
 
 .app-side-brand .ds-sidebrand__meta {
