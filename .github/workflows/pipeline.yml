@@ -200,8 +200,11 @@ jobs:
         run: |
           set -euo pipefail
           SVC=$(sed -n 's/^ServiceName=//p' infra/env/dev.params)
+          # --output text joins list elements with TABS, not spaces — the case pattern below
+          # matches on spaces, so without this the check false-negatives on every deploy
+          # even when mock-integration is correctly present (confirmed: it always was).
           NAMES=$(aws ecs describe-task-definition --task-definition "neobank-dev-$SVC" \
-                    --query 'taskDefinition.containerDefinitions[].name' --output text)
+                    --query 'taskDefinition.containerDefinitions[].name' --output text | tr '\t' ' ')
           echo "containers: $NAMES"
           case " $NAMES " in
             *" mock-integration "*) echo "ok: 3-container task" ;;
